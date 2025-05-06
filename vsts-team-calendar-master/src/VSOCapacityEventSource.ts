@@ -5,7 +5,7 @@ import { EventInput } from "@fullcalendar/core";
 import { EventSourceError } from "@fullcalendar/core/structs/event-source";
 import { generateColor } from "./Color";
 import { IDaysOffGroupedEvent } from './IDaysOffGroupedEvent'; 
-import { ICalendarEvent, IEventIcon, IEventCategory } from "./Contracts";
+import { ICalendarEvent, IEventIcon, IEventCategory, ICalendarMember } from "./Contracts";
 import { formatDate, getDatesInRange, shiftToUTC, shiftToLocal } from "./TimeLib";
 import { TeamMemberCapacityIdentityRef, TeamSettingsIteration, TeamSettingsDaysOff, TeamSettingsDaysOffPatch, CapacityPatch, TeamMemberCapacity, WorkRestClient } from "azure-devops-extension-api/Work";
 
@@ -19,6 +19,7 @@ export class VSOCapacityEventSource {
     private capacitySummaryData: ObservableArray<IEventCategory> = new ObservableArray<IEventCategory>([]);
     private capacityUrl: ObservableValue<string> = new ObservableValue("");
     //private groupedEventMap: { [dateString: string]: ICalendarEvent } = {};
+    private customEventsMap: { [eventKey: string]: { halfDay?: "AM" | "PM" } } = {};
     private hostUrl: string = "";
     private iterations: TeamSettingsIteration[] = [];
     private iterationSummaryData: ObservableArray<IEventCategory> = new ObservableArray<IEventCategory>([]);
@@ -47,12 +48,14 @@ export class VSOCapacityEventSource {
         endDate = shiftToUTC(endDate);
         if (isHalfDay && halfDayType) {
             if (halfDayType === "AM") {
-                startDate.setHours(9, 0, 0, 0);
-                endDate.setHours(12, 0, 0, 0);
+                startDate.setUTCHours(9, 0, 0, 0);
+                endDate.setUTCHours(12, 0, 0, 0);
             } else {
-                startDate.setHours(14, 0, 0, 0);
-                endDate.setHours(18, 0, 0, 0);
+                startDate.setUTCHours(14, 0, 0, 0);
+                endDate.setUTCHours(18, 0, 0, 0);
             }
+            console.log("🧪 addEvent", { startDate, endDate, isHalfDay, halfDayType });
+
         }
         
     
@@ -77,8 +80,25 @@ export class VSOCapacityEventSource {
                     };
             delete this.capacityMap[iterationId];
             const capacityPatch: CapacityPatch = { activities: capacity.activities, daysOff: capacity.daysOff };
-            capacityPatch.daysOff.push({ start: startDate, end: endDate });
+            
+            const sameDayIndex = capacityPatch.daysOff.findIndex(d =>
+                new Date(d.start).toDateString() === startDate.toDateString()
+            );
+            
+            if (sameDayIndex >= 0) {
+                const existing = capacityPatch.daysOff[sameDayIndex];
+                existing.start = new Date(Math.min(existing.start.getTime(), startDate.getTime()));
+                existing.end = new Date(Math.max(existing.end.getTime(), endDate.getTime()));
+            } else {
+                capacityPatch.daysOff.push({ start: startDate, end: endDate });
+            }
+            
+            const eventKey = `${memberId}_${startDate.toISOString()}`;
+            this.customEventsMap[eventKey] = {
+            halfDay: halfDayType
+               };
             return this.workClient.updateCapacityWithIdentityRef(capacityPatch, this.teamContext, iterationId, memberId);
+            
         }
     };
     
@@ -383,9 +403,21 @@ export class VSOCapacityEventSource {
                 oldEvent.title = `${selectedMemberName} Day Off`;
             }
             const capacityPatch: CapacityPatch = { activities: capacity.activities, daysOff: capacity.daysOff };
+            const eventKey = `${oldEvent.member?.id}_${startDate.toISOString()}`;
+                if (isHalfDay && halfDayType) {
+                    this.customEventsMap[eventKey] = { halfDay: halfDayType };
+                } else {
+                    delete this.customEventsMap[eventKey]; // supprime si repassé en journée complète
+                }
             return this.workClient.updateCapacityWithIdentityRef(capacityPatch, this.teamContext, iterationId, oldEvent.member!.id);
         }
     };
+    
+    public getCustomEventHalfDay(event: { member?: ICalendarMember; startDate?: string }): "AM" | "PM" | undefined {
+        const key = `${event.member?.id}_${event.startDate}`;
+        return this.customEventsMap[key]?.halfDay;
+    }
+    
     
     private buildTeamImageUrl(id: string): string {
         return this.hostUrl + "_api/_common/IdentityImage?id=" + id;
@@ -419,12 +451,15 @@ export class VSOCapacityEventSource {
         return this.workClient.getTeamDaysOff(this.teamContext, iterationId);
     };
     private processCapacity = (
+        
         capacities: TeamMemberCapacityIdentityRef[],
         iterationId: string,
         capacityCatagoryMap: { [id: string]: IEventCategory },
         calendarStart: Date,
         calendarEnd: Date
     ) => {
+        this.groupedEventMap = {}; 
+
         if (!capacities?.length) return;
     
         for (const capacity of capacities) {
@@ -461,7 +496,11 @@ export class VSOCapacityEventSource {
                 const dates = getDatesInRange(start, end);
                 for (const dateObj of dates) {
                     if (calendarStart <= dateObj && dateObj <= calendarEnd) {
-                        const date = dateObj.toISOString().split("T")[0];
+                       // const date = dateObj.toISOString().split("T")[0];
+                       const normalized = new Date(dateObj);
+                       normalized.setHours(0, 0, 0, 0);
+                       const date = normalized.toISOString().split("T")[0];
+
     
                         console.log(`[processCapacity] ${date} | ${title} | halfDay=${halfDay ?? "none"}`);
     

@@ -295,13 +295,42 @@ class ExtensionContent extends React.Component {
         el: HTMLElement;
         view: View;
     }) => {
-        if (arg.event.id.startsWith(DaysOffId) && arg.event.start) {
-            const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(arg.event.start);
+        const { event, el } = arg;
     
-            console.log(`[eventRender] ${arg.event.start.toISOString()} - ${capacityEvent?.icons?.length ?? 0} icons`);
+        // 🧠 Étape 1 : tenter de récupérer le halfDay (AM / PM) depuis la source
+        const halfDay = this.vsoCapacityEventSource.getCustomEventHalfDay({
+            startDate: event.start?.toISOString() ?? "",
+            member: {
+                id: event.extendedProps?.member?.id,
+                displayName: event.extendedProps?.member?.displayName,
+            },
+        });
+    
+        // 🎨 Étape 2 : appliquer un style particulier selon halfDay
+        if (halfDay === "AM" || halfDay === "PM") {
+            const bgColor = halfDay === "AM" ? "#FFF3E0" : "#E3F2FD";
+            const borderColor = halfDay === "AM" ? "#FB8C00" : "#1976D2";
+    
+            el.style.backgroundColor = bgColor;
+            el.style.borderLeft = `4px solid ${borderColor}`;
+    
+            const content = el.querySelector(".fc-event-title");
+            if (content && !content.textContent?.startsWith(`[${halfDay}]`)) {
+                content.textContent = `[${halfDay}] ${content.textContent}`;
+            }
+        }
+    
+
+        if (event.id.startsWith(DaysOffId) && event.start) {
+            const normalizedDate = new Date(event.start);
+            normalizedDate.setHours(0, 0, 0, 0); // 🛠️ Force minuit UTC
+            const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedDate);
+    
+            console.log(`[eventRender] ${event.start.toISOString()} - ${capacityEvent?.icons?.length ?? 0} icons`);
     
             if (capacityEvent?.icons?.length) {
-                const content = arg.el.querySelector(".fc-content") || arg.el;
+                const content = el.querySelector(".fc-event-title") || el;
+
     
                 // Remove any existing icons to avoid duplicates
                 const oldIcons = content.querySelectorAll(".event-icon");
@@ -313,6 +342,9 @@ class ExtensionContent extends React.Component {
                         img.src = icon.src;
                         img.className = "event-icon";
                         img.title = icon.linkedEvent.title;
+                        img.style.height = "14px";
+                        img.style.marginLeft = "6px";
+
                         img.onclick = () => {
                             this.eventToEdit = icon.linkedEvent;
                             this.openDialog.value = Dialogs.NewDaysOffDialog;
@@ -321,9 +353,9 @@ class ExtensionContent extends React.Component {
                     }
                 });
             }
-        } else if (arg.event.id.startsWith(IterationId) && arg.isStart) {
-            arg.el.innerText = arg.event.title;
-            arg.el.style.color = "black";
+        } else if (event.id.startsWith(IterationId) && arg.isStart) {
+            el.innerText = event.title;
+            el.style.color = "black";
         }
     };
     
@@ -459,7 +491,12 @@ class ExtensionContent extends React.Component {
 
     private onDialogDismiss = () => {
         this.openDialog.value = Dialogs.None;
+        
+        if (this.calendarComponentRef.current) {
+            this.getCalendarApi().refetchEvents();
+        }
     };
+    
 
     private onEventClick = (arg: { el: HTMLElement; event: EventApi; jsEvent: MouseEvent; view: View }) => {
         if (arg.event.id.startsWith(FreeFormId)) {

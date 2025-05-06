@@ -32,11 +32,11 @@ export class FreeFormEventsSource {
     
         // Ajustement des heures si halfDay
         if (halfDayType === "AM") {
-            startDate.setHours(8, 0, 0);
+            startDate.setHours(9, 0, 0);
             endDate.setHours(12, 0, 0);
         } else if (halfDayType === "PM") {
-            startDate.setHours(13, 0, 0);
-            endDate.setHours(17, 0, 0);
+            startDate.setHours(14, 0, 0);
+            endDate.setHours(18, 0, 0);
         }
     
         const start = shiftToUTC(startDate);
@@ -49,11 +49,11 @@ export class FreeFormEventsSource {
             startDate: start.toISOString(),
             title: title,
             halfDay: halfDayType,
-            member: { id: memberId, displayName: "" }, // displayName sera corrigé ailleurs si nécessaire
+            member: { id: memberId, displayName: "" }, 
             icons: []
         };
     
-        // Normalisation de la catégorie
+      
         if (typeof event.category !== "string") {
             event.category = event.category.title;
         }

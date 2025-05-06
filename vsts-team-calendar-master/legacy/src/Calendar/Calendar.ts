@@ -247,8 +247,7 @@ export class Calendar extends Controls.Control<CalendarOptions> {
             calEvent.backgroundColor = calEvent.color;
             calEvent.borderColor = calEvent.color;
         }
-// ← Fin du bloc demi-journée
-
+      
 // puis on rend l’événement
 this._element.fullCalendar("renderEvent", calEvent, false);
 
