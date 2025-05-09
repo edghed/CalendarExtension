@@ -7,6 +7,7 @@ export interface MonthAndYear {
 }
 
 export function formatDate(date: Date, format?: string): string {
+    console.log(`[formatDate] ${date.toISOString()} as ${format}`);
     if (format === "YYYY-MM-DD" || format === "MM-DD-YYYY") {
         let month = "" + (date.getMonth() + 1);
         let day = "" + date.getDate();
@@ -66,7 +67,11 @@ export function monthAndYearToString(monthAndYear: MonthAndYear): string {
  * @param date to be converted
  */
 export function shiftToLocal(date: Date): Date {
-    return new Date(date.getTime() + date.getTimezoneOffset() * minute);
+    const local = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+    console.log(`[shiftToLocal] ${date.toISOString()} -> ${local.toISOString()}`);
+    return local;
+
+    //return new Date(date.getTime() + date.getTimezoneOffset() * minute);
 }
 
 /**

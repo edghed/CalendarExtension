@@ -219,9 +219,18 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
                             <MessageDialog
                                 message="Are you sure you want to delete the days off?"
                                 onConfirm={() => {
-                                    this.props.eventSource.deleteEvent(this.props.event!, this.props.event!.iterationId!).then(() => {
-                                        this.props.calendarApi.refetchEvents();
-                                    });
+                                    const { event, eventSource, calendarApi } = this.props;
+
+                                    if (event && event.iterationId && eventSource?.deleteEvent) {
+                                        const result = eventSource.deleteEvent(event, event.iterationId);
+                                        if (result && typeof result.then === "function") {
+                                            result.then(() => {
+                                                calendarApi.refetchEvents();
+                                            });
+                                        }
+                                    }
+                                    
+                                    
                                     this.isConfirmationDialogOpen.value = false;
                                     this.props.onDismiss();
                                 }}
@@ -245,6 +254,9 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
         let temp = e.target.value;
         if (temp) {
             this.endDate = toDate(temp);
+            this.halfDayType.value = undefined;
+            this.isHalfDay.value = false;
+
         }
         this.validateSelections();
     };
@@ -253,16 +265,38 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
         let temp = e.target.value;
         if (temp) {
             this.startDate = toDate(temp);
+            this.halfDayType.value = undefined;
+            this.isHalfDay.value = false;
         }
         this.validateSelections();
     };
 
     private onOKClick = (): void => {
-        let promise;
-    
         const isHalfDay = !!this.halfDayType.value;
     
+        //  Inject AM/PM hours if half-day is selected
+        if (isHalfDay && this.halfDayType.value) {
+            if (this.halfDayType.value === "AM") {
+                this.startDate.setHours(9, 0, 0, 0);
+                this.endDate.setHours(12, 0, 0, 0);
+            } else if (this.halfDayType.value === "PM") {
+                this.startDate.setHours(14, 0, 0, 0);
+                this.endDate.setHours(18, 0, 0, 0);
+            }
+        }
+    
+        // 
+        //  Validate that half-day spans a single day
+        if (isHalfDay && this.startDate.toDateString() !== this.endDate.toDateString()) {
+            this.message.value = "Half-day events must start and end on the same day.";
+            this.okButtonEnabled.value = false;
+            return;
+        }
+    
+        let promise: Promise<any> | undefined;
+    
         if (this.props.event) {
+            //  Update existing event
             promise = this.props.eventSource.updateEvent(
                 this.props.event,
                 this.props.event.iterationId!,
@@ -274,8 +308,14 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
                 this.halfDayType.value
             );
         } else {
+            //  Add new event
+            if (!this.iteration) {
+                console.error("No iteration available for selected dates.");
+                return;
+            }
+    
             promise = this.props.eventSource.addEvent(
-                this.iteration!.id,
+                this.iteration.id,
                 this.startDate,
                 this.endDate,
                 isHalfDay,
@@ -285,12 +325,16 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
             );
         }
     
-        promise.then(() => {
-            this.props.calendarApi.refetchEvents();
-        });
+        if (promise) {
+            promise.then(() => {
+                this.props.calendarApi.refetchEvents();
+            });
+        }
     
         this.props.onDismiss();
     };
+    
+    
     
     private onSelectTeamMember = (event: React.SyntheticEvent<HTMLElement>, item: IListBoxItem<{}>) => {
         this.selectedMemberName = item.text!;
@@ -317,11 +361,14 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
         const halfDayInvalid = this.isHalfDay.value && !this.halfDayType.value;
         if (!valid || halfDayInvalid) {
             this.okButtonEnabled.value = false;
+        
             if (halfDayInvalid) {
                 this.message.value = "Please select AM or PM for a half-day.";
             }
+        
             return;
         }
+        
 
         this.okButtonEnabled.value = valid;
         

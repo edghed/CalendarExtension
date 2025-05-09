@@ -89,12 +89,20 @@ export class SummaryComponent extends React.Component<ISummaryComponentProps> {
     private renderRow = (index: number, item: IEventCategory, details: IListItemDetails<IEventCategory>, key?: string): JSX.Element => {
         return (
             <ListItem key={key || "list-item" + index} index={index} details={details}>
+                
                 <div className="catagory-summary-row flex-row h-scroll-hidden">
-                    {item.imageUrl && <img alt="" className="category-icon" src={item.imageUrl} />}
-                    {!item.imageUrl && item.color && <div className="category-color" style={{ backgroundColor: item.color }} />}
+                {item.imageUrl ? (
+                    <img alt="" className="category-icon" src={item.imageUrl} />
+                ) : (
+                    <div className="category-color" style={{ backgroundColor: item.color || "#cccccc" }} />
+                )}
+
                     <div className="flex-column h-scroll-hidden catagory-data">
                         <div className="category-titletext">{item.title}</div>
-                        <div className="category-subtitle">{item.subTitle}</div>
+                        <div className="category-subtitle">
+                        {item.subTitle ?? `${item.eventCount} day${item.eventCount !== 1 ? "s" : ""} off`}
+                        </div>
+
                     </div>
                 </div>
             </ListItem>

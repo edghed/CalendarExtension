@@ -34,8 +34,11 @@ import { AddEditEventDialog } from "./AddEditEventDialog";
 import { ICalendarEvent } from "./Contracts";
 import { FreeFormId, FreeFormEventsSource } from "./FreeFormEventSource";
 import { SummaryComponent } from "./SummaryComponent";
-import { MonthAndYear, monthAndYearToString, formatDate } from "./TimeLib";
+
+import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate } from "./TimeLib";
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
+const EXTENSION_VERSION = "2.0.68"; 
+
 
 enum Dialogs {
     None,
@@ -44,6 +47,7 @@ enum Dialogs {
 }
 
 class ExtensionContent extends React.Component {
+    
     anchorElement: ObservableValue<HTMLElement | undefined> = new ObservableValue<HTMLElement | undefined>(undefined);
     calendarComponentRef = React.createRef<FullCalendar>();
     commandBarItems: IHeaderCommandBarItem[];
@@ -173,7 +177,8 @@ class ExtensionContent extends React.Component {
                                 <Icon ariaLabel="Video icon" iconName="ChevronRight" />
                                 <Observer teams={this.teams}>
                                     {(props: { teams: WebApiTeam[] }) => {
-                                        return props.teams === [] ? null : (
+                                        return props.teams.length === 0 ? null : (
+
                                             <Dropdown
                                                 items={this.getTeamPickerOptions()}
                                                 onSelect={this.onSelectTeam}
@@ -272,6 +277,17 @@ class ExtensionContent extends React.Component {
     componentDidMount() {
         SDK.init();
         this.initialize();
+        const shouldRefresh = localStorage.getItem("forceCalendarRefresh") === "true";
+if (shouldRefresh) {
+    setTimeout(() => {
+        if (this.calendarComponentRef.current) {
+            console.log("🔁 Refetch automatique post-reset");
+            this.getCalendarApi().refetchEvents();
+            localStorage.removeItem("forceCalendarRefresh");
+        }
+    }, 200); //  Donne à React le temps de monter le calendrier
+}
+
         window.addEventListener("resize", this.updateDimensions);
     }
 
@@ -297,16 +313,9 @@ class ExtensionContent extends React.Component {
     }) => {
         const { event, el } = arg;
     
-        // 🧠 Étape 1 : tenter de récupérer le halfDay (AM / PM) depuis la source
-        const halfDay = this.vsoCapacityEventSource.getCustomEventHalfDay({
-            startDate: event.start?.toISOString() ?? "",
-            member: {
-                id: event.extendedProps?.member?.id,
-                displayName: event.extendedProps?.member?.displayName,
-            },
-        });
+        const halfDay: "AM" | "PM" | undefined = event.extendedProps?.halfDay;
     
-        // 🎨 Étape 2 : appliquer un style particulier selon halfDay
+        //  Applique le style visuel AM/PM
         if (halfDay === "AM" || halfDay === "PM") {
             const bgColor = halfDay === "AM" ? "#FFF3E0" : "#E3F2FD";
             const borderColor = halfDay === "AM" ? "#FB8C00" : "#1976D2";
@@ -314,37 +323,49 @@ class ExtensionContent extends React.Component {
             el.style.backgroundColor = bgColor;
             el.style.borderLeft = `4px solid ${borderColor}`;
     
-            const content = el.querySelector(".fc-event-title");
-            if (content && !content.textContent?.startsWith(`[${halfDay}]`)) {
-                content.textContent = `[${halfDay}] ${content.textContent}`;
+            let content = el.querySelector(".fc-event-title") as HTMLElement | null;
+
+            if (!content) {
+                content = document.createElement("div");
+                content.className = "fc-event-title";
+                content.style.fontSize = "0.8em";
+                el.appendChild(content);
+            }
+    
+            if (!content.textContent?.startsWith(`[${halfDay}]`)) {
+                const current = content.textContent ?? "";
+                content.textContent = `[${halfDay}] ${current}`.trim();
             }
         }
     
-
+        //  Icônes de jours off (users)
         if (event.id.startsWith(DaysOffId) && event.start) {
-            const normalizedDate = new Date(event.start);
-            normalizedDate.setHours(0, 0, 0, 0); // 🛠️ Force minuit UTC
-            const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedDate);
-    
-            console.log(`[eventRender] ${event.start.toISOString()} - ${capacityEvent?.icons?.length ?? 0} icons`);
-    
-            if (capacityEvent?.icons?.length) {
-                const content = el.querySelector(".fc-event-title") || el;
+            //const normalizedDate = new Date(event.start);
+            const normalizedDate = shiftToLocal(event.start as Date);
+            normalizedDate.setUTCHours(0, 0, 0, 0);
 
     
-                // Remove any existing icons to avoid duplicates
+            const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedDate);
+            if (capacityEvent?.icons?.length) {
+                const content = el.querySelector(".fc-content") || el;
+    
+                //  Supprimer anciennes icônes
                 const oldIcons = content.querySelectorAll(".event-icon");
                 oldIcons.forEach(i => i.remove());
     
                 capacityEvent.icons.forEach(icon => {
-                    if (icon.src) {
+                    const linkedId = icon.linkedEvent.id;
+                    const currentId = event.extendedProps?.id;
+                
+                    if (linkedId === currentId && icon.src) {
                         const img = document.createElement("img");
                         img.src = icon.src;
                         img.className = "event-icon";
                         img.title = icon.linkedEvent.title;
                         img.style.height = "14px";
                         img.style.marginLeft = "6px";
-
+                        img.style.borderRadius = "50%";
+                        img.style.cursor = "pointer";
                         img.onclick = () => {
                             this.eventToEdit = icon.linkedEvent;
                             this.openDialog.value = Dialogs.NewDaysOffDialog;
@@ -352,6 +373,7 @@ class ExtensionContent extends React.Component {
                         content.appendChild(img);
                     }
                 });
+                
             }
         } else if (event.id.startsWith(IterationId) && arg.isStart) {
             el.innerText = event.title;
@@ -407,6 +429,8 @@ class ExtensionContent extends React.Component {
         const locationService = await SDK.getService<ILocationService>(CommonServiceIds.LocationService);
 
         this.dataManager = await dataSvc.getExtensionDataManager(SDK.getExtensionContext().id, await SDK.getAccessToken());
+        this.vsoCapacityEventSource.setDataManager(this.dataManager);
+
         this.navigationService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
 
         const queryParam = await this.navigationService.getQueryParams();
@@ -462,6 +486,31 @@ class ExtensionContent extends React.Component {
             }
             this.freeFormEventSource.initialize(selectedTeamId, this.dataManager);
             this.vsoCapacityEventSource.initialize(project.id, this.projectName, selectedTeamId, this.selectedTeamName, this.hostUrl);
+            //  Reset automatique après déploiement si version a changé
+const resetKey = `last-init-version-${project.id}`;
+const lastKnownVersion = await this.dataManager!.getValue<string>(resetKey, { scopeType: "User" }).catch(() => undefined);
+
+if (lastKnownVersion !== EXTENSION_VERSION) {
+    console.log(` Nouvelle version détectée (${lastKnownVersion} → ${EXTENSION_VERSION})`);
+
+   
+    
+    // Reset les deux sources
+    this.vsoCapacityEventSource.resetAllState();
+    await this.freeFormEventSource.clearStoredEvents();
+
+    localStorage.setItem("forceCalendarRefresh", "true"); //  flag temporaire
+    await this.dataManager!.setValue(resetKey, EXTENSION_VERSION, { scopeType: "User" });
+}
+
+
+
+
+            if (queryParam?.reset === "true") {
+                this.vsoCapacityEventSource.resetAllState();
+                this.getCalendarApi().refetchEvents();
+            }
+            
             this.displayCalendar.value = true;
             this.dataManager.setValue<string>("selected-team-" + project.id, selectedTeamId, { scopeType: "User" });
             this.teams.value = allTeams;
@@ -499,11 +548,27 @@ class ExtensionContent extends React.Component {
     
 
     private onEventClick = (arg: { el: HTMLElement; event: EventApi; jsEvent: MouseEvent; view: View }) => {
-        if (arg.event.id.startsWith(FreeFormId)) {
-            this.eventApi = arg.event;
+        const { event } = arg;
+    
+        if (event.id.startsWith(FreeFormId)) {
+            this.eventApi = event;
             this.openDialog.value = Dialogs.NewEventDialog;
         }
+    
+        if (event.id.startsWith(DaysOffId)) {
+            console.log(" eventRender: id=", event.id, "start=", event.start?.toISOString());
+
+            const date = new Date(event.start!);
+            date.setHours(0, 0, 0, 0);
+            const grouped = this.vsoCapacityEventSource.getGroupedEventForDate(date);
+    
+            if (grouped && grouped.icons?.length === 1) {
+                this.eventToEdit = grouped.icons[0].linkedEvent;
+                this.openDialog.value = Dialogs.NewDaysOffDialog;
+            }
+        }
     };
+    
 
     private onEventDrop = (arg: {
         el: HTMLElement;
@@ -567,7 +632,7 @@ class ExtensionContent extends React.Component {
         }
     };
 
-    private onSelectCalendarDates = (arg: {
+   /* private onSelectCalendarDates = (arg: {
         start: Date;
         end: Date;
         startStr: string;
@@ -582,7 +647,31 @@ class ExtensionContent extends React.Component {
         this.selectedStartDate = arg.start;
         const dataDate = formatDate(this.selectedEndDate, "YYYY-MM-DD");
         this.anchorElement.value = document.querySelector("[data-date='" + dataDate + "']") as HTMLElement;
+    };*/
+    private onSelectCalendarDates = (arg: {
+        start: Date;
+        end: Date;
+        startStr: string;
+        endStr: string;
+        allDay: boolean;
+        resource?: any;
+        jsEvent: MouseEvent;
+        view: View;
+    }) => {
+        console.log(" [Select] Raw start:", arg.start.toISOString());
+        console.log(" [Select] Raw end:", arg.end.toISOString());
+    
+        this.selectedEndDate = new Date(arg.end);
+        this.selectedEndDate.setDate(arg.end.getDate() - 1);
+        this.selectedStartDate = arg.start;
+    
+        console.log(" [Select] Adjusted start:", this.selectedStartDate.toISOString());
+        console.log(" [Select] Adjusted end:", this.selectedEndDate.toISOString());
+    
+        const dataDate = formatDate(this.selectedEndDate, "YYYY-MM-DD");
+        this.anchorElement.value = document.querySelector("[data-date='" + dataDate + "']") as HTMLElement;
     };
+    
 
     private onSelectMonthYear = (event: React.SyntheticEvent<HTMLElement, Event>, item: IListBoxItem<{}>) => {
         const date = item.data as MonthAndYear;

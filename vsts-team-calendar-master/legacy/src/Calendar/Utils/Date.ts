@@ -58,3 +58,7 @@ export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
     }
     return dates;
 }
+export function shiftToLocal(date: Date | string): Date {
+    const d = typeof date === "string" ? new Date(date) : date;
+    return new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+}

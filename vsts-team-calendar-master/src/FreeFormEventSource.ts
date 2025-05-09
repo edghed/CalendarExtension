@@ -324,4 +324,73 @@ export class FreeFormEventsSource {
             return Promise.resolve(this.eventMap);
         });
     };
+    public async clearStoredEvents(): Promise<void> {
+        if (!this.dataManager || !this.selectedTeamId) return;
+    
+        const now = new Date();
+        const monthsToWipe = 24;
+    
+        try {
+            for (let i = 0; i < monthsToWipe; i++) {
+                const date = new Date(now.getFullYear(), now.getMonth() - i);
+                const mm = ("0" + (date.getMonth() + 1)).slice(-2);
+                const yyyy = date.getFullYear();
+                const collectionName = `${this.selectedTeamId}.${mm}-${yyyy}`;
+    
+                try {
+                    const docs = await this.dataManager.getDocuments(collectionName, {
+                        scopeType: "User",
+                        defaultValue: []
+                    });
+    
+                    for (const doc of docs) {
+                        if (doc.id !== "$settings") {
+                            await this.dataManager.deleteDocument(collectionName, doc.id!, {
+                                scopeType: "User"
+                            });
+                        }
+                    }
+    
+                    console.log(` Collection nettoyée : ${collectionName}`);
+                } catch (err) {
+                    const status = (err as any)?.status;
+                    if (status !== 404) {
+                        console.error(` Erreur suppression collection ${collectionName}`, err);
+                    }
+                }
+            }
+    
+            const catName = `${this.selectedTeamId}-categories`;
+            try {
+                const docs = await this.dataManager.getDocuments(catName, {
+                    scopeType: "User",
+                    defaultValue: []
+                });
+    
+                for (const doc of docs) {
+                    await this.dataManager.deleteDocument(catName, doc.id!, {
+                        scopeType: "User"
+                    });
+                }
+    
+                console.log(` Collection catégories nettoyée : ${catName}`);
+            } catch (err) {
+                const status = (err as any)?.status;
+                if (status !== 404) {
+                    console.error(` Erreur suppression catégories`, err);
+                }
+            }
+    
+            this.eventMap = {};
+            this.fetchedCollections.clear();
+            this.categories.clear();
+    
+        } catch (err) {
+            console.error(" clearStoredEvents global failure:", err);
+        }
+    }
+    
+    
+    
+    
 }

@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "team-calendar",
   "publisher": "EDEMGHARIANI",
-  "version": "2.0.32",
+  "version": "2.0.68",
   "name": "Team Calendar",
   "description": "Track events important to your team, view and manage days off, quickly see when sprints start and end, and more.",
   "public": false,
@@ -16,6 +16,7 @@
   "icons": {
     "default": "static/v2-images/calendar-logo.png"
   },
+
   "content": {
     "details": {
       "path": "overview.md"

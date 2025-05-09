@@ -1,3 +1,4 @@
+/* This code snippet is defining TypeScript interfaces for a calendar event system. Here's a breakdown of what each interface represents: */
 /**
  * Represents a single calendar event
  */
@@ -37,6 +38,7 @@ export interface ICalendarEvent {
      * Unique id for the event
      */
     id?: string;
+    
 
     /**
      * Id of the iteration to which the event is linked
