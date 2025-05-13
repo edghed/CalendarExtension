@@ -68,7 +68,7 @@ export class VSOCapacityEventSource {
         const normalized = new Date(startDate);
         normalized.setUTCHours(0, 0, 0, 0);
        // const dateKey = normalized.toISOString().split("T")[0];
-       const dateKey = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
+       const dateKey = formatDate(normalized, "YYYY-MM-DD");
 
     
         const event: ICalendarEvent = {
@@ -164,44 +164,41 @@ export class VSOCapacityEventSource {
     
         const normalized = new Date(event.startDate);
         normalized.setUTCHours(0, 0, 0, 0);
-        const dateKey = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
-
+        const dateKey = formatDate(normalized, "YYYY-MM-DD");
     
-        //  Suppression visuelle d’icône spécifique
+        // Suppression visuelle d’icône spécifique
         const icons = this.groupedEventMap[dateKey]?.icons;
         if (icons) {
-            this.groupedEventMap[dateKey].icons = icons.filter(
-                i =>
-                    i.linkedEvent.member?.id !== event.member?.id ||
-                    new Date(i.linkedEvent.startDate).getTime() !== new Date(event.startDate).getTime()
-            );
+            this.groupedEventMap[dateKey].icons = icons.filter(i => {
+                const sameMember = i.linkedEvent.member?.id === event.member?.id;
+                const sameStart = new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime();
+                const sameEnd = new Date(i.linkedEvent.endDate).getTime() === new Date(event.endDate).getTime();
+                return !(sameMember && sameStart && sameEnd);
+            });
+    
             if (this.groupedEventMap[dateKey].icons.length === 0) {
                 delete this.groupedEventMap[dateKey];
             }
         }
     
-        //  Cleanup halfDay cache
+        // Cleanup halfDay cache
         const key = `${event.member?.id}_${dateKey}`;
         delete this.customEventsMap[key];
     
-        //  Reset compteur de résumé
+        // Reset compteur de résumé
         const cat = this.capacitySummaryData.value.find(c => c.title === event.member?.displayName);
         if (cat && (cat as any).__days) {
             const days = (cat as any).__days as Set<string>;
             if (days.has(normalized.toISOString())) {
                 days.delete(normalized.toISOString());
-            
-                //  Recalcule le halfDay d’origine à partir de l’heure
-                const start = new Date(event.startDate);
-                const h = start.getHours();
-                const decrement = (h === 9 && event.endDate.includes("12:")) || (h === 14 && event.endDate.includes("18:")) ? 0.5 : 1;
-                
+    
+                // Gestion du décrément basé sur halfDay
+                const decrement = event.halfDay === "AM" || event.halfDay === "PM" ? 0.5 : 1;
                 cat.eventCount -= decrement;
             }
-            
         }
     
-        // 🗂 Suppression dans ADO
+        // Suppression dans ADO
         if (isTeam) {
             const teamDaysOff = this.teamDayOffMap[iterationId];
             if (!teamDaysOff) return;
@@ -222,6 +219,7 @@ export class VSOCapacityEventSource {
             return this.workClient.updateCapacityWithIdentityRef(patch, this.teamContext, iterationId, event.member!.id);
         }
     };
+    
     
     
     public getCapacitySummaryData = (): ObservableArray<IEventCategory> => {
@@ -338,22 +336,31 @@ export class VSOCapacityEventSource {
     
                     Object.keys(this.groupedEventMap).forEach(id => {
                         const grouped = this.groupedEventMap[id];
-                        const start = shiftToLocal(new Date(grouped.startDate));
-                        const end = shiftToLocal(new Date(grouped.endDate));
+                        const startRaw = new Date(grouped.startDate);
+                        const endRaw = new Date(grouped.endDate);
+    
+                        const isFullDay =
+                            startRaw.getUTCHours() === 0 &&
+                            endRaw.getUTCHours() >= 23;
+    
+                        const start = isFullDay ? startRaw : shiftToLocal(startRaw);
+                        const end = isFullDay ? endRaw : shiftToLocal(endRaw);
     
                         if ((calendarStart <= start && start <= calendarEnd) || (calendarStart <= end && end <= calendarEnd)) {
                             const isHalfDay = grouped.halfDay === "AM" || grouped.halfDay === "PM";
+    
+                            const adjustedEnd = new Date(end);
                             if (!isHalfDay) {
-                                end.setDate(end.getDate() + 1); 
+                                adjustedEnd.setDate(end.getDate() + 1); // Full day => exclusive end
                             }
-                            
+    
                             renderedEvents.push({
                                 allDay: !isHalfDay,
                                 color: "transparent",
                                 editable: false,
                                 id: `${DaysOffId}_${grouped.member?.id}_${grouped.startDate}`,
                                 start,
-                                end,
+                                end: adjustedEnd,
                                 title: "",
                                 extendedProps: {
                                     member: grouped.member,
@@ -386,7 +393,7 @@ export class VSOCapacityEventSource {
     public getGroupedEventForDate = (date: Date): IDaysOffGroupedEvent | undefined => {
         const normalized = new Date(date);
         normalized.setUTCHours(0, 0, 0, 0);
-        const dateKey = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
+        const dateKey = formatDate(normalized, "YYYY-MM-DD");
         return this.groupedEventMap[dateKey];
 
     };
@@ -479,7 +486,7 @@ export class VSOCapacityEventSource {
         //  Nettoyage des icônes obsolètes
         const normalizedOld = new Date(originalStartDate);
         normalizedOld.setUTCHours(0, 0, 0, 0); // reste en UTC pour être cohérent
-        const dateKeyOld = formatDate(shiftToLocal(normalizedOld), "YYYY-MM-DD"); // transforme en clé locale
+        const dateKeyOld = formatDate(normalizedOld, "YYYY-MM-DD"); 
         
     
         const icons = this.groupedEventMap[dateKeyOld]?.icons;
@@ -538,7 +545,7 @@ export class VSOCapacityEventSource {
     public getCustomEventHalfDay(event: { member?: ICalendarMember; startDate?: string }): "AM" | "PM" | undefined {
         if (!event.startDate || !event.member?.id) return undefined;
         const normalized = new Date(event.startDate);
-        const dateKey = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
+        const dateKey = formatDate(normalized, "YYYY-MM-DD");
         const key = `${event.member.id}_${dateKey}`;
 
         return this.customEventsMap[key]?.halfDay;
@@ -596,10 +603,13 @@ export class VSOCapacityEventSource {
             this.capacityMap[iterationId][memberId] = capacity;
     
             for (const range of capacity.daysOff) {
-                const start = shiftToLocal(range.start);
-                const end = shiftToLocal(range.end);
+                const isFullDay = range.start.getUTCHours() === 0 && range.end.getUTCHours() === 23;
+                const start = isFullDay ? new Date(range.start) : shiftToLocal(range.start);
+                const end = isFullDay ? new Date(range.end) : shiftToLocal(range.end);
+
     
                 const { halfDay, increment } = this.isRealHalfDay(start, end);
+                const realHalfDay = halfDay ?? undefined;
     
                 const title = `${displayName} Day Off`;
     
@@ -611,7 +621,7 @@ export class VSOCapacityEventSource {
                     startDate: start.toISOString(),
                     title,
                     icons: [],
-                    halfDay
+                    halfDay: realHalfDay,
                 };
     
                 const icon: IEventIcon = {
@@ -623,9 +633,9 @@ export class VSOCapacityEventSource {
                 for (const dateObj of dates) {
                     if (calendarStart <= dateObj && dateObj <= calendarEnd) {
                         const normalized = new Date(dateObj);
-                        normalized.setHours(0, 0, 0, 0);
-                        const date = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
-
+                        normalized.setUTCHours(0, 0, 0, 0);
+                        const date = formatDate(normalized, "YYYY-MM-DD");
+    
                         const dayKey = `${memberId}_${date}`;
     
                         if (!capacityCatagoryMap[memberId]) {
@@ -654,29 +664,28 @@ export class VSOCapacityEventSource {
                                 member: event.member,
                                 startDate: date,
                                 title: "Grouped Event",
-                                halfDay
+                                halfDay: realHalfDay,
                             };
                         }
     
                         const exists = this.groupedEventMap[date].icons.some(
                             i =>
                                 i.linkedEvent.member?.id === event.member?.id &&
-                                new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime()
+                                new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime() &&
+                                i.linkedEvent.halfDay === realHalfDay
                         );
     
                         if (!exists) {
                             this.groupedEventMap[date].icons.push(icon);
                         }
     
-                        console.log(`[processCapacity] ${date} | ${title} | halfDay=${halfDay ?? "none"}`);
+                        console.log(`[processCapacity] ${date} | ${title} | halfDay=${realHalfDay ?? "none"}`);
                         console.log(`[Icons] ${date} => ${this.groupedEventMap[date].icons.length} icônes`);
                     }
                 }
             }
         }
     };
-    
-    
     
     
     
@@ -695,10 +704,13 @@ export class VSOCapacityEventSource {
         const teamImage = this.buildTeamImageUrl(teamId);
     
         for (const range of teamDaysOff.daysOff) {
-            const start = shiftToLocal(range.start);
-            const end = shiftToLocal(range.end);
+            const isFullDay = range.start.getUTCHours() === 0 && range.end.getUTCHours() === 23;
+            const start = isFullDay ? new Date(range.start) : shiftToLocal(range.start);
+            const end = isFullDay ? new Date(range.end) : shiftToLocal(range.end);
+
     
             const { halfDay, increment } = this.isRealHalfDay(start, end);
+            const realHalfDay = halfDay ?? undefined;
     
             const event: ICalendarEvent = {
                 category: teamName,
@@ -708,7 +720,7 @@ export class VSOCapacityEventSource {
                 startDate: start.toISOString(),
                 title: "Team Day Off",
                 icons: [],
-                halfDay
+                halfDay: realHalfDay
             };
     
             const icon: IEventIcon = {
@@ -720,9 +732,9 @@ export class VSOCapacityEventSource {
             for (const dateObj of dates) {
                 if (calendarStart <= dateObj && dateObj <= calendarEnd) {
                     const normalized = new Date(dateObj);
-                    normalized.setHours(0, 0, 0, 0);
-                    const date = formatDate(shiftToLocal(normalized), "YYYY-MM-DD");
-
+                    normalized.setUTCHours(0, 0, 0, 0);
+                    const date = formatDate(normalized, "YYYY-MM-DD");
+    
                     const dayKey = `${teamId}_${date}`;
     
                     if (!capacityCatagoryMap[teamName]) {
@@ -751,21 +763,22 @@ export class VSOCapacityEventSource {
                             member: event.member,
                             startDate: date,
                             title: "Grouped Event",
-                            halfDay
+                            halfDay: realHalfDay
                         };
                     }
     
                     const exists = this.groupedEventMap[date].icons.some(
                         i =>
                             i.linkedEvent.member?.id === event.member?.id &&
-                            new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime()
+                            new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime() &&
+                            i.linkedEvent.halfDay === realHalfDay
                     );
     
                     if (!exists) {
                         this.groupedEventMap[date].icons.push(icon);
                     }
     
-                    console.log(`[processTeamDaysOff] ${date} | halfDay=${halfDay ?? "none"}`);
+                    console.log(`[processTeamDaysOff] ${date} | halfDay=${realHalfDay ?? "none"}`);
                     console.log(`TeamEvent - ${date}: ${this.groupedEventMap[date].icons.length} icons`);
                 }
             }
@@ -773,10 +786,6 @@ export class VSOCapacityEventSource {
     };
     
     
-    
-    
-    
-
     
 
     // Removed duplicate processTeamDaysOff method

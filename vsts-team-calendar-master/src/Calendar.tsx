@@ -37,7 +37,7 @@ import { SummaryComponent } from "./SummaryComponent";
 
 import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate } from "./TimeLib";
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
-const EXTENSION_VERSION = "2.0.68"; 
+const EXTENSION_VERSION = "2.0.76"; 
 
 
 enum Dialogs {
@@ -341,7 +341,8 @@ if (shouldRefresh) {
         //  Icônes de jours off (users)
         if (event.id.startsWith(DaysOffId) && event.start) {
             //const normalizedDate = new Date(event.start);
-            const normalizedDate = shiftToLocal(event.start as Date);
+           // const normalizedDate = shiftToLocal(event.start as Date);
+           const normalizedDate = shiftToUTC(event.start as Date);
             normalizedDate.setUTCHours(0, 0, 0, 0);
 
     
