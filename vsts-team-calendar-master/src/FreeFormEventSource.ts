@@ -351,7 +351,7 @@ export class FreeFormEventsSource {
                         }
                     }
     
-                    console.log(` Collection nettoyée : ${collectionName}`);
+                   // console.log(` Collection nettoyée : ${collectionName}`);
                 } catch (err) {
                     const status = (err as any)?.status;
                     if (status !== 404) {
@@ -373,7 +373,7 @@ export class FreeFormEventsSource {
                     });
                 }
     
-                console.log(` Collection catégories nettoyée : ${catName}`);
+               // console.log(` Collection catégories nettoyée : ${catName}`);
             } catch (err) {
                 const status = (err as any)?.status;
                 if (status !== 404) {

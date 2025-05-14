@@ -150,74 +150,98 @@ export class VSOCapacityEventSource {
         }
     };
     
-    
-    
-   
-
-    /**
-     *Delete day off for a member or a team
-     */
-     public deleteEvent = (event: ICalendarEvent, iterationId: string) => {
+    public deleteEvent = (event: ICalendarEvent, iterationId: string) => {
         const isTeam = event.member?.displayName === Everyone;
-        const startDate = shiftToUTC(new Date(event.startDate));
-        const endDate = shiftToUTC(new Date(event.endDate));
     
-        const normalized = new Date(event.startDate);
-        normalized.setUTCHours(0, 0, 0, 0);
-        const dateKey = formatDate(normalized, "YYYY-MM-DD");
+        const startDateObj = new Date(event.startDate);
+        const endDateObj = new Date(event.endDate);
     
-        // Suppression visuelle d’icône spécifique
+        const dateKey = formatDate(shiftToUTC(startDateObj), "YYYY-MM-DD"); 
+        const eventHalfDay = event.halfDay ?? "none";
+    
+      //  console.log(`[deleteEvent] Tentative suppression`);
+      //  console.log(`[deleteEvent] Member: ${event.member?.displayName}`);
+      //  console.log(`[deleteEvent] Start ISO: ${startDateObj.toISOString()}`);
+      //  console.log(`[deleteEvent] End ISO:   ${endDateObj.toISOString()}`);
+      //  console.log(`[deleteEvent] HalfDay: ${eventHalfDay}`);
+    
+        // 1. Clean groupedEventMap icons
         const icons = this.groupedEventMap[dateKey]?.icons;
         if (icons) {
-            this.groupedEventMap[dateKey].icons = icons.filter(i => {
-                const sameMember = i.linkedEvent.member?.id === event.member?.id;
-                const sameStart = new Date(i.linkedEvent.startDate).getTime() === new Date(event.startDate).getTime();
-                const sameEnd = new Date(i.linkedEvent.endDate).getTime() === new Date(event.endDate).getTime();
-                return !(sameMember && sameStart && sameEnd);
-            });
-    
+            this.groupedEventMap[dateKey].icons = icons.filter(i =>
+                i.linkedEvent.member?.id !== event.member?.id ||
+                i.linkedEvent.halfDay !== eventHalfDay ||
+                new Date(i.linkedEvent.startDate).getTime() !== startDateObj.getTime()
+            );
             if (this.groupedEventMap[dateKey].icons.length === 0) {
                 delete this.groupedEventMap[dateKey];
             }
         }
     
-        // Cleanup halfDay cache
-        const key = `${event.member?.id}_${dateKey}`;
-        delete this.customEventsMap[key];
+        // 2. Clean halfday cache
+        const cacheKey = `${event.member?.id}_${dateKey}`;
+        delete this.customEventsMap[cacheKey];
     
-        // Reset compteur de résumé
+        // 3. Clean capacity summary
         const cat = this.capacitySummaryData.value.find(c => c.title === event.member?.displayName);
         if (cat && (cat as any).__days) {
             const days = (cat as any).__days as Set<string>;
-            if (days.has(normalized.toISOString())) {
-                days.delete(normalized.toISOString());
-    
-                // Gestion du décrément basé sur halfDay
-                const decrement = event.halfDay === "AM" || event.halfDay === "PM" ? 0.5 : 1;
+            const dayKey = `${event.member?.id}_${dateKey}`;
+            if (days.has(dayKey)) {
+                days.delete(dayKey);
+                const decrement = eventHalfDay !== "none" ? 0.5 : 1;
                 cat.eventCount -= decrement;
             }
         }
     
-        // Suppression dans ADO
+        // 4. Matching logic (halfDay safe)
+        const inferHalfDay = (start: Date | string, end: Date | string): "AM" | "PM" | "none" => {
+            const startHour = new Date(start).getUTCHours();
+            const endHour = new Date(end).getUTCHours();
+            if (startHour === 9 && endHour === 12) return "AM";
+            if (startHour === 14 && endHour === 18) return "PM";
+            return "none";
+        };
+    
+        const isSameDayAndHalfDay = (d: { start: Date | string; end: Date | string }) => {
+            const dDateKey = formatDate(shiftToUTC(new Date(d.start)), "YYYY-MM-DD"); 
+            const dHalfDay = inferHalfDay(d.start, d.end);
+            return dDateKey === dateKey && dHalfDay === eventHalfDay;
+        };
+    
+        // 5. Delete from ADO
         if (isTeam) {
             const teamDaysOff = this.teamDayOffMap[iterationId];
             if (!teamDaysOff) return;
     
-            teamDaysOff.daysOff = teamDaysOff.daysOff.filter(
-                d => !(d.start.valueOf() === startDate.valueOf() && d.end.valueOf() === endDate.valueOf())
-            );
-            const patch: TeamSettingsDaysOffPatch = { daysOff: teamDaysOff.daysOff };
-            return this.workClient.updateTeamDaysOff(patch, this.teamContext, iterationId);
-        } else {
-            const capacity = this.capacityMap[iterationId]?.[event.member!.id];
-            if (!capacity) return;
+            console.log("[deleteEvent] Before deletion - teamDaysOff:", teamDaysOff.daysOff);
     
-            capacity.daysOff = capacity.daysOff.filter(
-                d => !(d.start.valueOf() === startDate.valueOf() && d.end.valueOf() === endDate.valueOf())
+            teamDaysOff.daysOff = teamDaysOff.daysOff.filter(d => !isSameDayAndHalfDay(d));
+    
+            console.log("[deleteEvent] After deletion - teamDaysOff:", teamDaysOff.daysOff);
+    
+            return this.workClient.updateTeamDaysOff(
+                { daysOff: teamDaysOff.daysOff },
+                this.teamContext,
+                iterationId
             );
-            const patch: CapacityPatch = { activities: capacity.activities, daysOff: capacity.daysOff };
-            return this.workClient.updateCapacityWithIdentityRef(patch, this.teamContext, iterationId, event.member!.id);
         }
+    
+        const capacity = this.capacityMap[iterationId]?.[event.member!.id];
+        if (!capacity) return;
+    
+        console.log("[deleteEvent] Before deletion - daysOff:", capacity.daysOff);
+    
+        capacity.daysOff = capacity.daysOff.filter(d => !isSameDayAndHalfDay(d));
+    
+        console.log("[deleteEvent] After deletion - daysOff:", capacity.daysOff);
+    
+        return this.workClient.updateCapacityWithIdentityRef(
+            { activities: capacity.activities, daysOff: capacity.daysOff },
+            this.teamContext,
+            iterationId,
+            event.member!.id
+        );
     };
     
     
@@ -239,7 +263,7 @@ export class VSOCapacityEventSource {
         successCallback: (events: EventInput[]) => void,
         failureCallback: (error: EventSourceError) => void
     ): void => {
-        console.log("[getEvents] Fetching events from", arg.start, "to", arg.end);
+        //console.log("[getEvents] Fetching events from", arg.start, "to", arg.end);
     
         const capacityPromises: PromiseLike<TeamMemberCapacity[]>[] = [];
         const teamDaysOffPromises: PromiseLike<TeamSettingsDaysOff>[] = [];
@@ -317,14 +341,14 @@ export class VSOCapacityEventSource {
                     const teamsDayOffPromise = this.fetchTeamDaysOff(iteration.id);
                     teamDaysOffPromises.push(teamsDayOffPromise);
                     teamsDayOffPromise.then(teamDaysOff => {
-                        console.log(`[getEvents] Fetched team days off for iteration ${iteration.id}`);
+                       // console.log(`[getEvents] Fetched team days off for iteration ${iteration.id}`);
                         this.processTeamDaysOff(teamDaysOff, iteration.id, capacityCatagoryMap, calendarStart, calendarEnd);
                     });
     
                     const capacityPromise = this.fetchCapacities(iteration.id);
                     capacityPromises.push(capacityPromise);
                     capacityPromise.then(capacities => {
-                        console.log(`[getEvents] Fetched capacity for iteration ${iteration.id}`);
+                      //  console.log(`[getEvents] Fetched capacity for iteration ${iteration.id}`);
                         this.processCapacity(capacities, iteration.id, capacityCatagoryMap, calendarStart, calendarEnd);
                     });
                 }
@@ -332,7 +356,7 @@ export class VSOCapacityEventSource {
     
             Promise.all(teamDaysOffPromises).then(() => {
                 Promise.all(capacityPromises).then(() => {
-                    console.log(`[getEvents] All capacities and days off processed`);
+                //    console.log(`[getEvents] All capacities and days off processed`);
     
                     Object.keys(this.groupedEventMap).forEach(id => {
                         const grouped = this.groupedEventMap[id];
@@ -382,7 +406,7 @@ export class VSOCapacityEventSource {
     
                     this.capacitySummaryData.splice(0, this.capacitySummaryData.length, ...updatedSummary);
     
-                    console.log(`[getEvents] Final renderedEvents:`, renderedEvents);
+                  //  console.log(`[getEvents] Final renderedEvents:`, renderedEvents);
                 });
             });
         });
@@ -845,7 +869,7 @@ export class VSOCapacityEventSource {
     }
     
     public async resetAllState(): Promise<void> {
-        console.log(" RESET COMPLET DE L'EXTENSION");
+       // console.log(" RESET COMPLET DE L'EXTENSION");
     
         this.capacitySummaryData.splice(0, this.capacitySummaryData.length);
         this.iterationSummaryData.splice(0, this.iterationSummaryData.length);

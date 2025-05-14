@@ -37,7 +37,7 @@ import { SummaryComponent } from "./SummaryComponent";
 
 import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate } from "./TimeLib";
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
-const EXTENSION_VERSION = "2.0.76"; 
+const EXTENSION_VERSION = "2.0.87"; 
 
 
 enum Dialogs {
@@ -281,7 +281,7 @@ class ExtensionContent extends React.Component {
 if (shouldRefresh) {
     setTimeout(() => {
         if (this.calendarComponentRef.current) {
-            console.log("🔁 Refetch automatique post-reset");
+           // console.log(" Refetch automatique post-reset");
             this.getCalendarApi().refetchEvents();
             localStorage.removeItem("forceCalendarRefresh");
         }
@@ -492,7 +492,7 @@ const resetKey = `last-init-version-${project.id}`;
 const lastKnownVersion = await this.dataManager!.getValue<string>(resetKey, { scopeType: "User" }).catch(() => undefined);
 
 if (lastKnownVersion !== EXTENSION_VERSION) {
-    console.log(` Nouvelle version détectée (${lastKnownVersion} → ${EXTENSION_VERSION})`);
+   // console.log(` Nouvelle version détectée (${lastKnownVersion} → ${EXTENSION_VERSION})`);
 
    
     
@@ -554,21 +554,31 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
         if (event.id.startsWith(FreeFormId)) {
             this.eventApi = event;
             this.openDialog.value = Dialogs.NewEventDialog;
+            return;
         }
     
         if (event.id.startsWith(DaysOffId)) {
-            console.log(" eventRender: id=", event.id, "start=", event.start?.toISOString());
-
-            const date = new Date(event.start!);
-            date.setHours(0, 0, 0, 0);
-            const grouped = this.vsoCapacityEventSource.getGroupedEventForDate(date);
+            const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
+            const normalizedUtc = new Date(rawStart);
+            normalizedUtc.setUTCHours(0, 0, 0, 0);
     
-            if (grouped && grouped.icons?.length === 1) {
-                this.eventToEdit = grouped.icons[0].linkedEvent;
-                this.openDialog.value = Dialogs.NewDaysOffDialog;
+            const grouped = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedUtc);
+    
+            if (grouped?.icons?.length) {
+                const exact = grouped.icons.find(icon =>
+                    icon.linkedEvent.member?.id === event.extendedProps?.member?.id &&
+                    new Date(icon.linkedEvent.startDate).getTime() === new Date(event.extendedProps?.startDate).getTime() &&
+                    icon.linkedEvent.halfDay === event.extendedProps?.halfDay
+                );
+    
+                if (exact) {
+                    this.eventToEdit = exact.linkedEvent;
+                    this.openDialog.value = Dialogs.NewDaysOffDialog;
+                }
             }
         }
     };
+    
     
 
     private onEventDrop = (arg: {
@@ -659,15 +669,15 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
         jsEvent: MouseEvent;
         view: View;
     }) => {
-        console.log(" [Select] Raw start:", arg.start.toISOString());
-        console.log(" [Select] Raw end:", arg.end.toISOString());
+      //  console.log(" [Select] Raw start:", arg.start.toISOString());
+      //  console.log(" [Select] Raw end:", arg.end.toISOString());
     
         this.selectedEndDate = new Date(arg.end);
         this.selectedEndDate.setDate(arg.end.getDate() - 1);
         this.selectedStartDate = arg.start;
     
-        console.log(" [Select] Adjusted start:", this.selectedStartDate.toISOString());
-        console.log(" [Select] Adjusted end:", this.selectedEndDate.toISOString());
+      //  console.log(" [Select] Adjusted start:", this.selectedStartDate.toISOString());
+      //  console.log(" [Select] Adjusted end:", this.selectedEndDate.toISOString());
     
         const dataDate = formatDate(this.selectedEndDate, "YYYY-MM-DD");
         this.anchorElement.value = document.querySelector("[data-date='" + dataDate + "']") as HTMLElement;
