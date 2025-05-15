@@ -20,6 +20,7 @@ import { MessageDialog } from "./MessageDialog";
 import { toDate, formatDate } from "./TimeLib";
 
 interface IAddEditEventDialogProps {
+    dialogTitle?: string;
     calendarApi: Calendar;
     eventApi?: EventApi;
     end: Date;
@@ -81,7 +82,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
                     <PanelHeader
                         onDismiss={this.props.onDismiss}
                         showCloseButton={false}
-                        titleProps={{ size: TitleSize.Small, text: this.props.eventApi ? "Edit event" : "Add event" }}
+                        titleProps={{ size: TitleSize.Small, text: this.props.dialogTitle ?? (this.props.eventApi ? "Edit event" : "Add event") }}
                     />
                     <PanelContent>
                         <div className="flex-grow flex-column event-dialog-content">

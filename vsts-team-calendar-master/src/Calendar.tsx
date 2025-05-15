@@ -37,13 +37,14 @@ import { SummaryComponent } from "./SummaryComponent";
 
 import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate } from "./TimeLib";
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
-const EXTENSION_VERSION = "2.0.87"; 
+const EXTENSION_VERSION = "2.0.111"; 
 
 
 enum Dialogs {
     None,
     NewEventDialog,
-    NewDaysOffDialog
+    NewDaysOffDialog,
+    NewTrainingDialog
 }
 
 class ExtensionContent extends React.Component {
@@ -233,12 +234,15 @@ class ExtensionContent extends React.Component {
                                 anchorOrigin={{ horizontal: Location.start, vertical: Location.start }}
                                 key={this.selectedEndDate!.toString()}
                                 menuProps={{
-                                    id: "foo",
+                                    id: "calendar-context-menu",
                                     items: [
-                                        { id: "event", text: "Add event", iconProps: { iconName: "Add" }, onActivate: this.onClickAddEvent },
-                                        { id: "dayOff", text: "Add days off", iconProps: { iconName: "Clock" }, onActivate: this.onClickAddDaysOff }
+                                        { id: "event", text: "Add Training", iconProps: { iconName: "Education" }, onActivate: this.onClickAddTraining }
+,
+                                        { id: "dayOff", text: "Add OOO", iconProps: { iconName: "Clock" }, onActivate: this.onClickAddDaysOff },
+                                        { id: "remote", text: "Add Remote", iconProps: { iconName: "Home" }, onActivate: this.onClickAddRemote }
                                     ]
                                 }}
+                                
                                 onDismiss={() => {
                                     this.anchorElement.value = undefined;
                                 }}
@@ -247,29 +251,54 @@ class ExtensionContent extends React.Component {
                     }}
                 </Observer>
                 <Observer dialog={this.openDialog}>
-                    {(props: { dialog: Dialogs }) => {
-                        return props.dialog === Dialogs.NewDaysOffDialog ? (
-                            <AddEditDaysOffDialog
-                                calendarApi={this.getCalendarApi()}
-                                end={this.selectedEndDate}
-                                event={this.eventToEdit}
-                                eventSource={this.vsoCapacityEventSource}
-                                members={this.members}
-                                onDismiss={this.onDialogDismiss}
-                                start={this.selectedStartDate}
-                            />
-                        ) : props.dialog === Dialogs.NewEventDialog ? (
-                            <AddEditEventDialog
-                                calendarApi={this.getCalendarApi()}
-                                end={this.selectedEndDate}
-                                eventApi={this.eventApi}
-                                eventSource={this.freeFormEventSource}
-                                onDismiss={this.onDialogDismiss}
-                                start={this.selectedStartDate}
-                            />
-                        ) : null;
-                    }}
-                </Observer>
+    {(props: { dialog: Dialogs }) => {
+        switch (props.dialog) {
+            case Dialogs.NewDaysOffDialog:
+                return (
+                    <AddEditDaysOffDialog
+                        calendarApi={this.getCalendarApi()}
+                        end={this.selectedEndDate}
+                        event={this.eventToEdit}
+                        eventSource={this.vsoCapacityEventSource}
+                        members={this.members}
+                        onDismiss={this.onDialogDismiss}
+                        start={this.selectedStartDate}
+                        dialogTitle="Out of Office"
+                    />
+                );
+
+            case Dialogs.NewEventDialog:
+                return (
+                    <AddEditEventDialog
+                        calendarApi={this.getCalendarApi()}
+                        end={this.selectedEndDate}
+                        eventApi={this.eventApi}
+                        eventSource={this.freeFormEventSource}
+                        onDismiss={this.onDialogDismiss}
+                        start={this.selectedStartDate}
+                        dialogTitle="Event"
+                    />
+                );
+
+            case Dialogs.NewTrainingDialog:
+                return (
+                    <AddEditEventDialog
+                        calendarApi={this.getCalendarApi()}
+                        end={this.selectedEndDate}
+                        eventApi={this.eventApi}
+                        eventSource={this.freeFormEventSource}
+                        onDismiss={this.onDialogDismiss}
+                        start={this.selectedStartDate}
+                        dialogTitle="Training"
+                    />
+                );
+
+            default:
+                return null;
+        }
+    }}
+</Observer>
+
             </Page>
         );
     }
@@ -299,6 +328,19 @@ if (shouldRefresh) {
         }
         return { month, year };
     }
+    private onClickAddRemote = () => {
+        this.eventApi = undefined;
+    
+        const today = new Date();
+        this.selectedStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        this.selectedEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+        this.openDialog.value = Dialogs.NewEventDialog;
+    
+        // Tu peux aussi stocker une info "remote" ici dans `eventApi` ou via `extendedProps`
+        // si tu veux faire un affichage personnalisé ensuite
+    };
+    
 
     /**
      * Edits the rendered event if required
@@ -533,11 +575,17 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
         this.eventApi = undefined;
         this.openDialog.value = Dialogs.NewEventDialog;
     };
+   
+     private onClickAddTraining = () => {
+        this.eventApi = undefined;
+        this.openDialog.value = Dialogs.NewTrainingDialog;
+    };
 
     private onClickAddDaysOff = () => {
         this.eventToEdit = undefined;
         this.openDialog.value = Dialogs.NewDaysOffDialog;
     };
+    
 
     private onDialogDismiss = () => {
         this.openDialog.value = Dialogs.None;

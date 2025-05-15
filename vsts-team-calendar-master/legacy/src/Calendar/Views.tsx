@@ -100,7 +100,7 @@ export class EventSourceCollection {
                         if (promiseState.value) {
                             services.push(promiseState.value);
                         } else {
-                            console.log("Failed to get calendar event source instance for: " + contributions[index].id);
+                          //  console.log("Failed to get calendar event source instance for: " + contributions[index].id);
                         }
                     });
                     return new EventSourceCollection(services);

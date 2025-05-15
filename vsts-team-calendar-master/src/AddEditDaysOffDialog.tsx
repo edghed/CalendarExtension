@@ -62,7 +62,10 @@ interface IAddEditDaysOffDialogProps {
      * Start date for event
      */
     start: Date;
+    
+    dialogTitle?: string;
 }
+// Removed incomplete interface declaration
 
 /**
  * Dialog that lets user add new days off
@@ -131,7 +134,8 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
                     <PanelHeader
                         onDismiss={this.props.onDismiss}
                         showCloseButton={false}
-                        titleProps={{ size: TitleSize.Small, text: this.props.event ? "Edit days off" : "Add days off" }}
+                        titleProps={{ size: TitleSize.Small, text: this.props.dialogTitle ?? (this.props.event ? "Edit days off" : "Add days off") }}
+
                     />
                     <PanelContent>
                         <div className="flex-grow flex-column event-dialog-content">
