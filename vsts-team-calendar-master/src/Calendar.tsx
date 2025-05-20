@@ -32,22 +32,29 @@ import { localeData } from "moment";
 import { AddEditDaysOffDialog } from "./AddEditDaysOffDialog";
 import { AddEditEventDialog } from "./AddEditEventDialog";
 import { ICalendarEvent } from "./Contracts";
+
 import { FreeFormId, FreeFormEventsSource } from "./FreeFormEventSource";
 import { SummaryComponent } from "./SummaryComponent";
 
+
 import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate } from "./TimeLib";
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
-const EXTENSION_VERSION = "2.0.111"; 
+import { RemoteId, RemoteEventSource } from "./RemoteEventSource";
+import { AddEditRemoteDialog } from "./AddEditRemoteDialog";
+const EXTENSION_VERSION = "2.0.138"; 
 
 
 enum Dialogs {
     None,
     NewEventDialog,
     NewDaysOffDialog,
-    NewTrainingDialog
+    NewTrainingDialog,
+    NewRemoteDialog
 }
 
 class ExtensionContent extends React.Component {
+    remoteEventSource: RemoteEventSource;
+
     
     anchorElement: ObservableValue<HTMLElement | undefined> = new ObservableValue<HTMLElement | undefined>(undefined);
     calendarComponentRef = React.createRef<FullCalendar>();
@@ -78,6 +85,7 @@ class ExtensionContent extends React.Component {
             month: new Date().getMonth(),
             year: new Date().getFullYear()
         });
+        this.remoteEventSource = new RemoteEventSource();
 
         this.state = {
             fullScreenMode: false,
@@ -209,7 +217,9 @@ class ExtensionContent extends React.Component {
                                         eventResize={this.onEventResize}
                                         eventSources={[
                                             { events: this.freeFormEventSource.getEvents },
-                                            { events: this.vsoCapacityEventSource.getEvents }
+                                            { events: this.vsoCapacityEventSource.getEvents },
+                                             { events: this.remoteEventSource.getEvents }
+
                                         ]}
                                         firstDay={localeData(navigator.language).firstDayOfWeek()}
                                         header={false}
@@ -224,7 +234,7 @@ class ExtensionContent extends React.Component {
                         }}
                     </Observer>
                 </div>
-                <SummaryComponent capacityEventSource={this.vsoCapacityEventSource} freeFormEventSource={this.freeFormEventSource} />
+                <SummaryComponent capacityEventSource={this.vsoCapacityEventSource} freeFormEventSource={this.freeFormEventSource}  remoteEventSource={this.remoteEventSource} />
                 <Observer anchorElement={this.anchorElement}>
                     {(props: { anchorElement: HTMLElement | undefined }) => {
                         return props.anchorElement ? (
@@ -292,6 +302,21 @@ class ExtensionContent extends React.Component {
                         dialogTitle="Training"
                     />
                 );
+                case Dialogs.NewRemoteDialog:
+    return (
+        <AddEditRemoteDialog
+        calendarApi={this.getCalendarApi()}
+        start={this.selectedStartDate}
+        end={this.selectedEndDate}
+        members={this.members}
+        event={this.eventToEdit}
+        onDismiss={this.onDialogDismiss}
+        dialogTitle="Remote"
+        eventSource={this.remoteEventSource}
+            
+        />
+    );
+
 
             default:
                 return null;
@@ -329,17 +354,18 @@ if (shouldRefresh) {
         return { month, year };
     }
     private onClickAddRemote = () => {
-        this.eventApi = undefined;
+        this.eventToEdit = undefined;
     
-        const today = new Date();
-        this.selectedStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        this.selectedEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        // Ne rien faire si les dates sont déjà définies par le clic sur le calendrier
+        if (!this.selectedStartDate || !this.selectedEndDate) {
+            const today = new Date();
+            this.selectedStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            this.selectedEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        }
     
-        this.openDialog.value = Dialogs.NewEventDialog;
-    
-        // Tu peux aussi stocker une info "remote" ici dans `eventApi` ou via `extendedProps`
-        // si tu veux faire un affichage personnalisé ensuite
+        this.openDialog.value = Dialogs.NewRemoteDialog;
     };
+    
     
 
     /**
@@ -354,10 +380,9 @@ if (shouldRefresh) {
         view: View;
     }) => {
         const { event, el } = arg;
-    
         const halfDay: "AM" | "PM" | undefined = event.extendedProps?.halfDay;
     
-        //  Applique le style visuel AM/PM
+        // Style AM/PM
         if (halfDay === "AM" || halfDay === "PM") {
             const bgColor = halfDay === "AM" ? "#FFF3E0" : "#E3F2FD";
             const borderColor = halfDay === "AM" ? "#FB8C00" : "#1976D2";
@@ -366,7 +391,6 @@ if (shouldRefresh) {
             el.style.borderLeft = `4px solid ${borderColor}`;
     
             let content = el.querySelector(".fc-event-title") as HTMLElement | null;
-
             if (!content) {
                 content = document.createElement("div");
                 content.className = "fc-event-title";
@@ -375,31 +399,27 @@ if (shouldRefresh) {
             }
     
             if (!content.textContent?.startsWith(`[${halfDay}]`)) {
-                const current = content.textContent ?? "";
+                const current = content.textContent || "";
                 content.textContent = `[${halfDay}] ${current}`.trim();
             }
         }
     
-        //  Icônes de jours off (users)
+        // DAYS OFF AVATARS (ne pas modifier)
         if (event.id.startsWith(DaysOffId) && event.start) {
-            //const normalizedDate = new Date(event.start);
-           // const normalizedDate = shiftToLocal(event.start as Date);
-           const normalizedDate = shiftToUTC(event.start as Date);
+            const normalizedDate = shiftToUTC(event.start as Date);
             normalizedDate.setUTCHours(0, 0, 0, 0);
-
     
             const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedDate);
             if (capacityEvent?.icons?.length) {
                 const content = el.querySelector(".fc-content") || el;
     
-                //  Supprimer anciennes icônes
-                const oldIcons = content.querySelectorAll(".event-icon");
-                oldIcons.forEach(i => i.remove());
+                // Clear old icons
+                content.querySelectorAll(".event-icon").forEach(i => i.remove());
     
                 capacityEvent.icons.forEach(icon => {
                     const linkedId = icon.linkedEvent.id;
                     const currentId = event.extendedProps?.id;
-                
+    
                     if (linkedId === currentId && icon.src) {
                         const img = document.createElement("img");
                         img.src = icon.src;
@@ -409,20 +429,63 @@ if (shouldRefresh) {
                         img.style.marginLeft = "6px";
                         img.style.borderRadius = "50%";
                         img.style.cursor = "pointer";
-                        img.onclick = () => {
+    
+                        img.onclick = e => {
+                            e.stopPropagation(); // évite propagation
                             this.eventToEdit = icon.linkedEvent;
                             this.openDialog.value = Dialogs.NewDaysOffDialog;
                         };
+    
                         content.appendChild(img);
                     }
                 });
-                
             }
-        } else if (event.id.startsWith(IterationId) && arg.isStart) {
+        }
+    
+        // ✅ REMOTE AVATAR (corrigé pour éviter l'accès à .eventMap)
+        else if (event.id.startsWith(RemoteId) && arg.isStart) {
+            const memberId = event.extendedProps?.member?.id;
+            const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
+            rawStart.setUTCHours(0, 0, 0, 0);
+    
+            const grouped = this.remoteEventSource.getGroupedEventForDate(rawStart);
+            const fullEvent = grouped?.icons?.find(icon =>
+                icon.linkedEvent.member?.id === memberId &&
+                new Date(icon.linkedEvent.startDate).getTime() === new Date(event.extendedProps?.startDate).getTime() &&
+                icon.linkedEvent.halfDay === event.extendedProps?.halfDay
+            )?.linkedEvent;
+    
+            if (memberId && fullEvent) {
+                const content = el.querySelector(".fc-content") || el;
+                content.querySelectorAll(".event-icon").forEach(i => i.remove());
+    
+                const img = document.createElement("img");
+                img.src = `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`;
+                img.className = "event-icon";
+                img.title = "Remote";
+                img.style.height = "14px";
+                img.style.marginLeft = "6px";
+                img.style.borderRadius = "50%";
+                img.style.cursor = "pointer";
+    
+                img.onclick = e => {
+                    e.stopPropagation();
+                    this.eventToEdit = fullEvent;
+                    this.openDialog.value = Dialogs.NewRemoteDialog;
+                };
+    
+                content.appendChild(img);
+            }
+        }
+    
+        // ITERATION rendering (inchangé)
+        else if (event.id.startsWith(IterationId) && arg.isStart) {
             el.innerText = event.title;
             el.style.color = "black";
         }
     };
+    
+    
     
     
 
@@ -528,6 +591,16 @@ if (shouldRefresh) {
                 
             }
             this.freeFormEventSource.initialize(selectedTeamId, this.dataManager);
+            this.remoteEventSource.initialize(
+                project.id,
+                project.name,
+                selectedTeamId,
+                this.selectedTeamName,
+                this.hostUrl,
+                this.dataManager
+            );
+            
+
             this.vsoCapacityEventSource.initialize(project.id, this.projectName, selectedTeamId, this.selectedTeamName, this.hostUrl);
             //  Reset automatique après déploiement si version a changé
 const resetKey = `last-init-version-${project.id}`;
@@ -605,12 +678,31 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
             return;
         }
     
+        if (event.id.startsWith(RemoteId)) {
+            const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
+            rawStart.setUTCHours(0, 0, 0, 0);
+            const grouped = this.remoteEventSource.getGroupedEventForDate(rawStart);
+    
+            if (grouped?.icons?.length) {
+                const exact = grouped.icons.find(icon =>
+                    icon.linkedEvent.member?.id === event.extendedProps?.member?.id &&
+                    new Date(icon.linkedEvent.startDate).getTime() === new Date(event.extendedProps?.startDate).getTime() &&
+                    icon.linkedEvent.halfDay === event.extendedProps?.halfDay
+                );
+    
+                if (exact) {
+                    this.eventToEdit = exact.linkedEvent;
+                    this.openDialog.value = Dialogs.NewRemoteDialog;
+                }
+            }
+    
+            return;
+        }
+    
         if (event.id.startsWith(DaysOffId)) {
             const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
-            const normalizedUtc = new Date(rawStart);
-            normalizedUtc.setUTCHours(0, 0, 0, 0);
-    
-            const grouped = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedUtc);
+            rawStart.setUTCHours(0, 0, 0, 0);
+            const grouped = this.vsoCapacityEventSource.getGroupedEventForDate(rawStart);
     
             if (grouped?.icons?.length) {
                 const exact = grouped.icons.find(icon =>

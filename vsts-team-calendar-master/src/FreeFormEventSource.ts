@@ -103,12 +103,18 @@ export class FreeFormEventsSource {
         const calendarStart = arg.start;
         const calendarEnd = new Date(arg.end);
         calendarEnd.setDate(arg.end.getDate() - 1);
-
+    
         this.fetchEvents(calendarStart, calendarEnd).then(() => {
             const inputs: EventInput[] = [];
             const catagoryMap: { [id: string]: IEventCategory } = {};
+            const summaryList: IEventCategory[] = [];
+    
             Object.keys(this.eventMap).forEach(id => {
                 const event = this.eventMap[id];
+    
+                //  Ne pas traiter les Remote ici
+                if (event.category === "Remote") return;
+    
                 // skip events with date strings we can't parse.
                 if (Date.parse(event.startDate) && event.endDate && Date.parse(event.endDate)) {
                     if (event.category && typeof event.category !== "string") {
@@ -120,31 +126,29 @@ export class FreeFormEventsSource {
                     if (!event.category) {
                         event.category = "Uncategorized";
                     }
-
+    
                     const start = shiftToLocal(new Date(event.startDate));
                     const end = shiftToLocal(new Date(event.endDate));
-
+    
                     // check if event should be shown
                     if ((calendarStart <= start && start <= calendarEnd) || (calendarStart <= end && end <= calendarEnd)) {
                         const excludedEndDate = new Date(end);
                         excludedEndDate.setDate(end.getDate() + 1);
-
+    
                         const eventColor = generateColor(event.category);
-
+    
                         inputs.push({
                             id: FreeFormId + "." + event.id,
                             allDay: !event.halfDay,
                             editable: true,
                             start: start,
-                            //end: excludedEndDate,
                             end: event.halfDay
-                                 ? end                                                  // demi-journée : on respecte end tel quel
-                                 : (() => {                                              // jour complet : on exclut le dernier jour
-                                        const ex = new Date(end);
-                                        ex.setDate(end.getDate() + 1);
-                                        return ex;
-                                    })(),
-
+                                ? end
+                                : (() => {
+                                    const ex = new Date(end);
+                                    ex.setDate(end.getDate() + 1);
+                                    return ex;
+                                })(),
                             title: event.title,
                             color: eventColor,
                             extendedProps: {
@@ -154,7 +158,7 @@ export class FreeFormEventsSource {
                                 halfDay: event.halfDay
                             }
                         });
-
+    
                         if (catagoryMap[event.category]) {
                             catagoryMap[event.category].eventCount++;
                         } else {
@@ -168,17 +172,20 @@ export class FreeFormEventsSource {
                     }
                 }
             });
-            successCallback(inputs);
-            this.summaryData.value = Object.keys(catagoryMap).map(key => {
+    
+            Object.keys(catagoryMap).forEach(key => {
                 const catagory = catagoryMap[key];
                 if (catagory.eventCount > 1) {
                     catagory.subTitle = catagory.eventCount + " events";
                 }
-                return catagory;
+                summaryList.push(catagory);
             });
+    
+            successCallback(inputs);
+            this.summaryData.value = summaryList;
         });
     };
-
+    
     public getSummaryData = (): ObservableArray<IEventCategory> => {
         return this.summaryData;
     };
@@ -288,7 +295,7 @@ export class FreeFormEventsSource {
         const collectionNames = getMonthYearInRange(start, end).map(item => {
             return this.selectedTeamId! + "." + item;
         });
-
+    
         const collectionsToFetch: string[] = [];
         collectionNames.forEach(collection => {
             if (!this.fetchedCollections.has(collection)) {
@@ -296,34 +303,41 @@ export class FreeFormEventsSource {
                 this.fetchedCollections.add(collection);
             }
         });
-
+    
         return this.dataManager!.queryCollectionsByName(collectionsToFetch).then((collections: ExtensionDataCollection[]) => {
             collections.forEach(collection => {
                 if (collection && collection.documents) {
                     collection.documents.forEach(doc => {
-                        this.eventMap[doc.id] = doc;
+                        //  NE PAS charger les Remote dans FreeForm
+                        if (doc.category !== "Remote") {
+                            this.eventMap[doc.id] = doc;
+                        }
                     });
                 }
             });
-
-            // if there is old data get it and convert it
+    
+            // legacy fallback
             if (!this.fetchedCollections.has(this.selectedTeamId!)) {
                 return this.dataManager!.queryCollectionsByName([this.selectedTeamId!]).then((collections: ExtensionDataCollection[]) => {
                     this.fetchedCollections.add(this.selectedTeamId!);
                     if (collections && collections[0] && collections[0].documents) {
                         const oldData: ICalendarEvent[] = [];
                         collections[0].documents.forEach((doc: ICalendarEvent) => {
-                            this.eventMap[doc.id!] = doc;
-                            oldData.push(doc);
+                            if (doc.category !== "Remote") {
+                                this.eventMap[doc.id!] = doc;
+                                oldData.push(doc);
+                            }
                         });
                         this.convertData(oldData);
                     }
                     return this.eventMap;
                 });
             }
+    
             return Promise.resolve(this.eventMap);
         });
     };
+    
     public async clearStoredEvents(): Promise<void> {
         if (!this.dataManager || !this.selectedTeamId) return;
     

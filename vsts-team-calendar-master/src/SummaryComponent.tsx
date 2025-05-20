@@ -7,6 +7,7 @@ import { Observer } from "azure-devops-ui/Observer";
 import { IEventCategory } from "./Contracts";
 import { FreeFormEventsSource } from "./FreeFormEventSource";
 import { VSOCapacityEventSource } from "./VSOCapacityEventSource";
+import { RemoteEventSource } from "./RemoteEventSource";
 
 interface ISummaryComponentProps {
     /**
@@ -18,6 +19,7 @@ interface ISummaryComponentProps {
      * Object that stores all event data
      */
     freeFormEventSource: FreeFormEventsSource;
+    remoteEventSource: RemoteEventSource;
 }
 
 export class SummaryComponent extends React.Component<ISummaryComponentProps> {
@@ -50,6 +52,7 @@ export class SummaryComponent extends React.Component<ISummaryComponentProps> {
                         );
                     }}
                 </Observer>
+    
                 <Observer url={this.props.capacityEventSource.getCapacityUrl()}>
                     {(props: { url: string }) => {
                         return (
@@ -72,19 +75,41 @@ export class SummaryComponent extends React.Component<ISummaryComponentProps> {
                         );
                     }}
                 </Observer>
-                <a className="category-heading">Event</a>
+    
+                <a className="category-heading">Training</a>
                 <Observer eventSummaryData={this.props.freeFormEventSource.getSummaryData()}>
                     {(props: { eventSummaryData: IEventCategory[] }) => {
                         return props.eventSummaryData.length === 0 ? (
                             <div className="empty">(None)</div>
                         ) : (
-                            <ScrollableList itemProvider={this.props.freeFormEventSource.getSummaryData()} renderRow={this.renderRow} width="100%" />
+                            <ScrollableList
+                                itemProvider={this.props.freeFormEventSource.getSummaryData()}
+                                renderRow={this.renderRow}
+                                width="100%"
+                            />
+                        );
+                    }}
+                </Observer>
+    
+                {/* ✅ Nouvelle section Remote */}
+                <a className="category-heading">Remote</a>
+                <Observer remoteSummaryData={this.props.remoteEventSource.getSummaryData()}>
+                    {(props: { remoteSummaryData: IEventCategory[] }) => {
+                        return props.remoteSummaryData.length === 0 ? (
+                            <div className="empty">(None)</div>
+                        ) : (
+                            <ScrollableList
+                                itemProvider={this.props.remoteEventSource.getSummaryData()}
+                                renderRow={this.renderRow}
+                                width="100%"
+                            />
                         );
                     }}
                 </Observer>
             </div>
         );
     }
+    
 
     private renderRow = (index: number, item: IEventCategory, details: IListItemDetails<IEventCategory>, key?: string): JSX.Element => {
         return (
