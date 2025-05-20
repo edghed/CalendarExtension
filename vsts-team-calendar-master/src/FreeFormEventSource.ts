@@ -24,7 +24,7 @@ export class FreeFormEventsSource {
         title: string,
         startDate: Date,
         endDate: Date,
-        category: string,
+       
         description: string,
         halfDayType: "AM" | "PM" | undefined,
         memberId: string
@@ -43,7 +43,9 @@ export class FreeFormEventsSource {
         const end = shiftToUTC(endDate);
     
         const event: ICalendarEvent = {
-            category: category,
+           
+            category: "Training", // valeur fixe, toujours "Training"
+            
             description: description,
             endDate: end.toISOString(),
             startDate: start.toISOString(),
@@ -57,17 +59,28 @@ export class FreeFormEventsSource {
         if (typeof event.category !== "string") {
             event.category = event.category.title;
         }
-        if (event.category !== "Uncategorized") {
-            this.categories.add(event.category);
-        }
+      
     
         // Ajout d'une icône liée au membre
+        const safeLinkedEvent: ICalendarEvent = {
+            id: event.id, // ou undefined si pas encore généré
+            title: event.title,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            halfDay: event.halfDay,
+            category: event.category ?? "Training", //  Ajout de category obligatoire
+            member: event.member,
+            description: "", // ou event.description si utile
+            icons: [] 
+        };
+        
         event.icons = [
             {
                 src: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`,
-                linkedEvent: event
+                linkedEvent: safeLinkedEvent
             }
         ];
+        
     
         return this.dataManager!.createDocument(
             this.selectedTeamId! + "." + formatDate(startDate, "MM-YYYY"),
@@ -113,6 +126,7 @@ export class FreeFormEventsSource {
                 const event = this.eventMap[id];
     
                 //  Ne pas traiter les Remote ici
+                
                 if (event.category === "Remote") return;
     
                 // skip events with date strings we can't parse.
@@ -120,12 +134,7 @@ export class FreeFormEventsSource {
                     if (event.category && typeof event.category !== "string") {
                         event.category = event.category.title;
                     }
-                    if (event.category !== "Uncategorized") {
-                        this.categories.add(event.category);
-                    }
-                    if (!event.category) {
-                        event.category = "Uncategorized";
-                    }
+                
     
                     const start = shiftToLocal(new Date(event.startDate));
                     const end = shiftToLocal(new Date(event.endDate));
@@ -155,7 +164,8 @@ export class FreeFormEventsSource {
                                 category: event.category,
                                 description: event.description,
                                 id: event.id,
-                                halfDay: event.halfDay
+                                halfDay: event.halfDay,
+                                member: event.member
                             }
                         });
     
@@ -203,14 +213,14 @@ export class FreeFormEventsSource {
         title: string,
         startDate: Date,
         endDate: Date,
-        category: string,
+        
         description: string,
         halfDay?: "AM" | "PM"
     ): PromiseLike<ICalendarEvent> => {
         const oldEvent = this.eventMap[id];
         const oldStartDate = new Date(oldEvent.startDate);
 
-        oldEvent.category = category;
+        
         oldEvent.description = description;
         if (halfDay === "AM") {
             startDate.setHours(8, 0, 0);

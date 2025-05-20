@@ -41,7 +41,7 @@ import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate 
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
 import { RemoteId, RemoteEventSource } from "./RemoteEventSource";
 import { AddEditRemoteDialog } from "./AddEditRemoteDialog";
-const EXTENSION_VERSION = "2.0.138"; 
+const EXTENSION_VERSION = "2.0.140";
 
 
 enum Dialogs {
@@ -744,7 +744,7 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
                 arg.event.title,
                 arg.event.start!,
                 inclusiveEndDate,
-                arg.event.extendedProps.category,
+             
                 arg.event.extendedProps.description,
                 arg.event.extendedProps.halfDay,
                 
@@ -776,7 +776,7 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
                 arg.event.title,
                 arg.event.start!,
                 inclusiveEndDate,
-                arg.event.extendedProps.category,
+              
                 arg.event.extendedProps.description,
                 arg.event.extendedProps.halfDay
             );

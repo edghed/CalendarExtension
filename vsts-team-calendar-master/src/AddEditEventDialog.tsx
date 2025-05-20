@@ -82,7 +82,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
                     <PanelHeader
                         onDismiss={this.props.onDismiss}
                         showCloseButton={false}
-                        titleProps={{ size: TitleSize.Small, text: this.props.dialogTitle ?? (this.props.eventApi ? "Edit event" : "Add event") }}
+                       titleProps={{ size: TitleSize.Small, text: this.props.dialogTitle ?? (this.props.eventApi ? "Edit event" : "Add event") }}
                     />
                     <PanelContent>
                         <div className="flex-grow flex-column event-dialog-content">
@@ -197,7 +197,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
     }
 
     private onCatagorySelectionChange = (value?: IListBoxItem<{}>): void => {
-        this.category = value?.text || "Uncategorized";
+       
         this.validateSelections();
     };
 
@@ -243,9 +243,8 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
     private onOKClick = (): void => {
         const excludedEndDate = new Date(this.endDate);
         excludedEndDate.setDate(this.endDate.getDate() + 1);
-        if (!this.category) {
-            this.category = "Uncategorized";
-        }
+        this.category = "Training";
+
 
         const { eventApi, eventSource, calendarApi, onDismiss } = this.props;
         const saveEvent = eventApi
@@ -254,7 +253,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
                   this.title.value,
                   this.startDate,
                   this.endDate,
-                  this.category,
+              
                   this.description.value,
                   this.halfDayType.value
               )
@@ -262,7 +261,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
                   this.title.value,
                   this.startDate,
                   this.endDate,
-                  this.category,
+              
                   this.description.value,
                   this.halfDayType.value,
                   this.selectedMemberId

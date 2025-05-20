@@ -247,12 +247,9 @@ export class RemoteEventSource {
                 const raw = this.eventMap[id];
                 if (!raw.member?.displayName || raw.member.displayName === "Remote") {
                     console.warn(" Event with invalid member name:", raw);
-                    continue; //  Ignore les remotes mal formés
-                    
+                    continue; // Ignore les remotes mal formés
                 }
-                const memberName = raw.member.displayName;
     
-                //  NE PAS faire shiftToLocal ici
                 const eventStart = new Date(raw.startDate);
                 const eventEnd = new Date(raw.endDate);
     
@@ -285,13 +282,6 @@ export class RemoteEventSource {
                     normalized.setUTCHours(0, 0, 0, 0);
                     const dateKey = formatDate(normalized, "YYYY-MM-DD");
     
-                    console.log("[REMOTE:getEvents] raw startDate:", raw.startDate);
-                    console.log("[REMOTE:getEvents] raw endDate:", raw.endDate);
-                    console.log("[REMOTE:getEvents] parsed eventStart:", eventStart.toISOString());
-                    console.log("[REMOTE:getEvents] parsed eventEnd:", eventEnd.toISOString());
-                    console.log("[REMOTE:getEvents] isHalfDay:", isHalfDay);
-                    console.log("[REMOTE:getEvents] dateKey:", dateKey);
-    
                     const icon: IEventIcon = {
                         linkedEvent: raw,
                         src: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${raw.member?.id}?size=small`
@@ -308,13 +298,13 @@ export class RemoteEventSource {
                         if (!exists) this.groupedEventMap[dateKey].icons!.push(icon);
                     }
     
-                    const memberName = (raw.member?.displayName && raw.member.displayName !== "Remote")
-    ? raw.member.displayName
-    : "Unknown"; // ou filtre complètement
-
+                    // ✅ Correction : on utilise member.id comme clé
+                    const memberId = raw.member?.id ?? "unknown";
+                    const memberName = raw.member?.displayName ?? "Unknown";
                     const increment = isHalfDay ? 0.5 : 1;
-                    if (!summaryMap[memberName]) {
-                        summaryMap[memberName] = {
+    
+                    if (!summaryMap[memberId]) {
+                        summaryMap[memberId] = {
                             title: memberName,
                             color: "#7E57C2",
                             eventCount: increment,
@@ -322,16 +312,16 @@ export class RemoteEventSource {
                             __days: { [dateKey]: true }
                         };
                     } else {
-                        if (!summaryMap[memberName].__days![dateKey]) {
-                            summaryMap[memberName].eventCount += increment;
-                            summaryMap[memberName].__days![dateKey] = true;
+                        if (!summaryMap[memberId].__days![dateKey]) {
+                            summaryMap[memberId].eventCount += increment;
+                            summaryMap[memberId].__days![dateKey] = true;
                         }
                     }
                 }
             }
     
-            for (const name in summaryMap) {
-                const entry = summaryMap[name];
+            for (const id in summaryMap) {
+                const entry = summaryMap[id];
                 const rounded = Number(entry.eventCount.toFixed(1));
                 this.summaryData.push({
                     title: entry.title,
@@ -344,6 +334,7 @@ export class RemoteEventSource {
             successCallback(events);
         }).catch(failureCallback);
     };
+    
     
     public getGroupedEventForDate(date: Date): ICalendarEvent | undefined {
         const d = new Date(date);
