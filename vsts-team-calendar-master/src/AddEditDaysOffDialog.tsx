@@ -87,7 +87,7 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
 
     constructor(props: IAddEditDaysOffDialogProps) {
         super(props);
-
+        
         this.okButtonEnabled = new ObservableValue<boolean>(true);
         this.message = new ObservableValue<string>("");
         this.memberSelection = new DropdownSelection();

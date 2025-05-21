@@ -41,7 +41,9 @@ import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate 
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
 import { RemoteId, RemoteEventSource } from "./RemoteEventSource";
 import { AddEditRemoteDialog } from "./AddEditRemoteDialog";
-const EXTENSION_VERSION = "2.0.140";
+import { CapacityAutoUpdaterService } from "./CapacityAutoUpdaterService";
+const EXTENSION_VERSION = "2.0.156";
+SDK.init();
 
 
 enum Dialogs {
@@ -77,6 +79,10 @@ class ExtensionContent extends React.Component {
     showMonthPicker: ObservableValue<boolean> = new ObservableValue<boolean>(false);
     teams: ObservableValue<WebApiTeam[]>;
     vsoCapacityEventSource: VSOCapacityEventSource;
+  
+
+
+
 
     constructor(props: {}) {
         super(props);
@@ -158,6 +164,10 @@ class ExtensionContent extends React.Component {
         this.members = [];
         this.freeFormEventSource = new FreeFormEventsSource();
         this.vsoCapacityEventSource = new VSOCapacityEventSource();
+        this.freeFormEventSource = new FreeFormEventsSource();
+        this.vsoCapacityEventSource = new VSOCapacityEventSource();
+        this.vsoCapacityEventSource.setFreeFormSource(this.freeFormEventSource);
+        
     }
 
     public render(): JSX.Element {
@@ -286,21 +296,8 @@ class ExtensionContent extends React.Component {
                         eventSource={this.freeFormEventSource}
                         onDismiss={this.onDialogDismiss}
                         start={this.selectedStartDate}
-                        dialogTitle="Event"
-                    />
-                );
-
-            case Dialogs.NewTrainingDialog:
-                return (
-                    <AddEditEventDialog
-                        calendarApi={this.getCalendarApi()}
-                        end={this.selectedEndDate}
-                        eventApi={this.eventApi}
-                        eventSource={this.freeFormEventSource}
-                        onDismiss={this.onDialogDismiss}
-                        start={this.selectedStartDate}
-                        dialogTitle="Training"
-                    />
+                        dialogTitle="Training" 
+                        members={this.members}              />
                 );
                 case Dialogs.NewRemoteDialog:
     return (
@@ -329,7 +326,13 @@ class ExtensionContent extends React.Component {
     }
 
     componentDidMount() {
-        SDK.init();
+        /*SDK.init();
+        SDK.ready().then(async () => {
+            const token = await SDK.getAccessToken();
+            
+            console.log(" AccessToken obtenu :", token);
+        });*/
+        
         this.initialize();
         const shouldRefresh = localStorage.getItem("forceCalendarRefresh") === "true";
 if (shouldRefresh) {
@@ -384,24 +387,11 @@ if (shouldRefresh) {
     
         // Style AM/PM
         if (halfDay === "AM" || halfDay === "PM") {
-            const bgColor = halfDay === "AM" ? "#FFF3E0" : "#E3F2FD";
-            const borderColor = halfDay === "AM" ? "#FB8C00" : "#1976D2";
-    
-            el.style.backgroundColor = bgColor;
-            el.style.borderLeft = `4px solid ${borderColor}`;
-    
-            let content = el.querySelector(".fc-event-title") as HTMLElement | null;
-            if (!content) {
-                content = document.createElement("div");
-                content.className = "fc-event-title";
-                content.style.fontSize = "0.8em";
-                el.appendChild(content);
+            const titleEl = el.querySelector(".fc-title, .fc-event-title") as HTMLElement;
+            if (titleEl) {
+                titleEl.textContent = `[${halfDay}] ${event.title}`;
             }
-    
-            if (!content.textContent?.startsWith(`[${halfDay}]`)) {
-                const current = content.textContent || "";
-                content.textContent = `[${halfDay}] ${current}`.trim();
-            }
+            
         }
     
         // DAYS OFF AVATARS (ne pas modifier)
@@ -411,7 +401,7 @@ if (shouldRefresh) {
     
             const capacityEvent = this.vsoCapacityEventSource.getGroupedEventForDate(normalizedDate);
             if (capacityEvent?.icons?.length) {
-                const content = el.querySelector(".fc-content") || el;
+                const content = arg.el.querySelector(".fc-content") || arg.el;
     
                 // Clear old icons
                 content.querySelectorAll(".event-icon").forEach(i => i.remove());
@@ -442,7 +432,49 @@ if (shouldRefresh) {
             }
         }
     
-        // ✅ REMOTE AVATAR (corrigé pour éviter l'accès à .eventMap)
+        // TRAINING AVATAR
+        else if (event.id.startsWith(FreeFormId) && arg.isStart) {
+            console.log(" eventRender →", event.title, event.extendedProps);
+
+            const memberId = event.extendedProps?.member?.id;
+            const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
+            const normalizedUTC = new Date(Date.UTC(rawStart.getUTCFullYear(), rawStart.getUTCMonth(), rawStart.getUTCDate()));
+
+            console.log(" Training member ID:", event.extendedProps?.member?.id);
+
+        
+            const grouped = this.freeFormEventSource.getGroupedEventForDate(normalizedUTC);
+
+            const fullEvent = grouped?.icons?.find(icon =>
+                icon.linkedEvent.member?.id === memberId &&
+                icon.linkedEvent.startDate === event.extendedProps?.startDate
+            )?.linkedEvent;
+        
+            if (memberId && fullEvent) {
+                const content = arg.el.querySelector(".fc-content") || arg.el;
+                content.querySelectorAll(".event-icon").forEach(i => i.remove());
+        
+                const img = document.createElement("img");
+                img.src = `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`;
+                img.className = "event-icon";
+                img.title = fullEvent.title;
+                img.style.height = "14px";
+                img.style.marginLeft = "6px";
+                img.style.borderRadius = "50%";
+                img.style.cursor = "pointer";
+        
+                img.onclick = e => {
+                    e.stopPropagation();
+                    this.eventApi = event;
+                    this.openDialog.value = Dialogs.NewEventDialog;
+                };
+        
+                content.appendChild(img);
+            }
+        }
+        
+    
+        // REMOTE AVATAR
         else if (event.id.startsWith(RemoteId) && arg.isStart) {
             const memberId = event.extendedProps?.member?.id;
             const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
@@ -456,7 +488,7 @@ if (shouldRefresh) {
             )?.linkedEvent;
     
             if (memberId && fullEvent) {
-                const content = el.querySelector(".fc-content") || el;
+                const content = arg.el.querySelector(".fc-content") || arg.el;
                 content.querySelectorAll(".event-icon").forEach(i => i.remove());
     
                 const img = document.createElement("img");
@@ -529,67 +561,57 @@ if (shouldRefresh) {
     }
 
     private async initialize() {
+        await SDK.ready();
+        const token = await SDK.getAccessToken();
+        console.log("🔐 Token ADO récupéré :", token);
+    
         const dataSvc = await SDK.getService<IExtensionDataService>(CommonServiceIds.ExtensionDataService);
         const projectService = await SDK.getService<IProjectPageService>(CommonServiceIds.ProjectPageService);
         const project = await projectService.getProject();
         const locationService = await SDK.getService<ILocationService>(CommonServiceIds.LocationService);
-
-        this.dataManager = await dataSvc.getExtensionDataManager(SDK.getExtensionContext().id, await SDK.getAccessToken());
+    
+        this.dataManager = await dataSvc.getExtensionDataManager(SDK.getExtensionContext().id, token);
         this.vsoCapacityEventSource.setDataManager(this.dataManager);
-
+    
         this.navigationService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-
         const queryParam = await this.navigationService.getQueryParams();
-        let selectedTeamId;
-
-        // if URL has team id in it, use that
-        if (queryParam && queryParam["team"]) {
-            selectedTeamId = queryParam["team"];
-        }
-
+    
+        let selectedTeamId = queryParam?.["team"];
+    
         if (project) {
             if (!selectedTeamId) {
-                // Nothing in URL - check data service
-                selectedTeamId = await this.dataManager.getValue<string>("selected-team-" + project.id, { scopeType: "User" });
+                selectedTeamId = await this.dataManager.getValue<string>(
+                    "selected-team-" + project.id,
+                    { scopeType: "User" }
+                );
             }
-
+    
             const client = getClient(CoreRestClient);
-
-            const allTeams = [];
-            let teams;
+            const allTeams: WebApiTeam[] = [];
+            let teams: WebApiTeam[];
             let callCount = 0;
             const fetchCount = 1000;
+    
             do {
                 teams = await client.getTeams(project.id, false, fetchCount, callCount * fetchCount);
                 allTeams.push(...teams);
                 callCount++;
             } while (teams.length === fetchCount);
-
-            this.projectId = project.id;
-            this.projectName = project.name;
-
-            allTeams.sort((a, b) => {
-                return a.name.toUpperCase().localeCompare(b.name.toUpperCase());
-            });
-
-            // if team id wasn't in URL or database use first available team
-            if (!selectedTeamId) {
+    
+            allTeams.sort((a, b) => a.name.localeCompare(b.name));
+            if (!selectedTeamId && allTeams.length > 0) {
                 selectedTeamId = allTeams[0].id;
             }
-
-            if (!queryParam || !queryParam["team"]) {
-                // Add team id to URL
+    
+            if (!queryParam?.["team"]) {
                 this.navigationService.setQueryParams({ team: selectedTeamId });
             }
-
+    
+            this.projectId = project.id;
+            this.projectName = project.name;
+            this.selectedTeamName = (await client.getTeam(project.id, selectedTeamId)).name;
             this.hostUrl = await locationService.getServiceLocation();
-            try {
-                this.selectedTeamName = (await client.getTeam(project.id, selectedTeamId)).name;
-            } catch (error) {
-                console.error(`Failed to get team with ID ${selectedTeamId}: ${error}`);
-              
-                
-            }
+    
             this.freeFormEventSource.initialize(selectedTeamId, this.dataManager);
             this.remoteEventSource.initialize(
                 project.id,
@@ -599,40 +621,70 @@ if (shouldRefresh) {
                 this.hostUrl,
                 this.dataManager
             );
-            
-
-            this.vsoCapacityEventSource.initialize(project.id, this.projectName, selectedTeamId, this.selectedTeamName, this.hostUrl);
-            //  Reset automatique après déploiement si version a changé
-const resetKey = `last-init-version-${project.id}`;
-const lastKnownVersion = await this.dataManager!.getValue<string>(resetKey, { scopeType: "User" }).catch(() => undefined);
-
-if (lastKnownVersion !== EXTENSION_VERSION) {
-   // console.log(` Nouvelle version détectée (${lastKnownVersion} → ${EXTENSION_VERSION})`);
-
-   
     
-    // Reset les deux sources
-    this.vsoCapacityEventSource.resetAllState();
-    await this.freeFormEventSource.clearStoredEvents();
-
-    localStorage.setItem("forceCalendarRefresh", "true"); //  flag temporaire
-    await this.dataManager!.setValue(resetKey, EXTENSION_VERSION, { scopeType: "User" });
-}
-
-
-
-
+            // ✅ Maintenant, on initialise Capacity avec tous les paramètres valides
+            this.vsoCapacityEventSource.initialize(
+                project.id,
+                this.projectName,
+                selectedTeamId,
+                this.selectedTeamName,
+                this.hostUrl
+            );
+    
+            // ✅ Ensuite, on peut appeler fetchIterations sans risque
+            const currentIterations = await this.vsoCapacityEventSource.fetchIterations?.();
+            const now = new Date();
+    
+            const current = currentIterations?.find(it => {
+                return it.attributes.startDate <= now && now <= it.attributes.finishDate;
+            });
+    
+            if (current) {
+                const updater = new CapacityAutoUpdaterService(
+                    this.vsoCapacityEventSource.getWorkClient(),
+                    this.vsoCapacityEventSource.getTeamContext(),
+                    this.freeFormEventSource
+                );
+    
+                await updater.syncAllCapacity(
+                    current.id,
+                    current.attributes.startDate,
+                    current.attributes.finishDate
+                );
+                console.log(" Capacity synced with trainings.");
+            }
+    
+            //  Affiche le calendrier maintenant que tout est prêt
+            this.displayCalendar.value = true;
+    
+            await this.dataManager.setValue<string>(
+                "selected-team-" + project.id,
+                selectedTeamId,
+                { scopeType: "User" }
+            );
+            this.teams.value = allTeams;
+            this.members = await client.getTeamMembersWithExtendedProperties(project.id, selectedTeamId);
+    
+            //  Reset après upgrade ?
+            const resetKey = `last-init-version-${project.id}`;
+            const lastKnownVersion = await this.dataManager.getValue<string>(resetKey, { scopeType: "User" }).catch(() => undefined);
+    
+            if (lastKnownVersion !== EXTENSION_VERSION) {
+                console.log(`🆕 New extension version: ${lastKnownVersion} → ${EXTENSION_VERSION}`);
+                this.vsoCapacityEventSource.resetAllState();
+                await this.freeFormEventSource.clearStoredEvents();
+                localStorage.setItem("forceCalendarRefresh", "true");
+                await this.dataManager.setValue(resetKey, EXTENSION_VERSION, { scopeType: "User" });
+            }
+    
+            //  Reset forcé
             if (queryParam?.reset === "true") {
                 this.vsoCapacityEventSource.resetAllState();
                 this.getCalendarApi().refetchEvents();
             }
-            
-            this.displayCalendar.value = true;
-            this.dataManager.setValue<string>("selected-team-" + project.id, selectedTeamId, { scopeType: "User" });
-            this.teams.value = allTeams;
-            this.members = await client.getTeamMembersWithExtendedProperties(project.id, selectedTeamId);
         }
     }
+    
 
     private onClickNewItem = () => {
         this.eventApi = undefined;
@@ -651,7 +703,7 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
    
      private onClickAddTraining = () => {
         this.eventApi = undefined;
-        this.openDialog.value = Dialogs.NewTrainingDialog;
+        this.openDialog.value = Dialogs.NewEventDialog;
     };
 
     private onClickAddDaysOff = () => {
@@ -669,14 +721,46 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
     };
     
 
-    private onEventClick = (arg: { el: HTMLElement; event: EventApi; jsEvent: MouseEvent; view: View }) => {
+    private onEventClick = (arg: {
+        isStart: boolean; el: HTMLElement; event: EventApi; jsEvent: MouseEvent; view: View 
+}) => {
         const { event } = arg;
     
         if (event.id.startsWith(FreeFormId)) {
             this.eventApi = event;
             this.openDialog.value = Dialogs.NewEventDialog;
+            const memberId = event.extendedProps?.member?.id;
+            console.log("🧠 FreeForm event:", { memberId, event });
             return;
         }
+        else if (event.id.startsWith(FreeFormId) && arg.isStart) {
+            const memberId = event.extendedProps?.member?.id;
+            const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);
+            rawStart.setUTCHours(0, 0, 0, 0);
+        
+            const content = arg.el.querySelector(".fc-content") || arg.el;
+            content.querySelectorAll(".event-icon").forEach(i => i.remove());
+        
+            if (memberId) {
+                const img = document.createElement("img");
+                img.src = `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`;
+                img.className = "event-icon";
+                img.title = event.title; // ou "Training" si tu préfères
+                img.style.height = "14px";
+                img.style.marginLeft = "6px";
+                img.style.borderRadius = "50%";
+                img.style.cursor = "pointer";
+        
+                img.onclick = e => {
+                    e.stopPropagation();
+                    this.eventApi = event;
+                    this.openDialog.value = Dialogs.NewTrainingDialog;
+                };
+        
+                content.appendChild(img);
+            }
+        }
+        
     
         if (event.id.startsWith(RemoteId)) {
             const rawStart = new Date(event.extendedProps?.startDate ?? event.start!);

@@ -6,8 +6,10 @@ import { EventInput } from "@fullcalendar/core";
 import { EventSourceError } from "@fullcalendar/core/structs/event-source";
 
 import { generateColor } from "./Color";
-import { ICalendarEvent, IEventCategory } from "./Contracts";
-import { shiftToLocal, shiftToUTC, getMonthYearInRange, formatDate } from "./TimeLib";
+import { ICalendarEvent, IEventCategory, IEventIcon } from "./Contracts";
+import { shiftToLocal, shiftToUTC, getMonthYearInRange, formatDate,getDatesInRange } from "./TimeLib";
+
+
 
 export const FreeFormId = "FreeForm";
 
@@ -24,11 +26,11 @@ export class FreeFormEventsSource {
         title: string,
         startDate: Date,
         endDate: Date,
-       
         description: string,
         halfDayType: "AM" | "PM" | undefined,
-        memberId: string
+        member: { id: string; displayName: string }
     ): PromiseLike<ICalendarEvent> => {
+    
     
         // Ajustement des heures si halfDay
         if (halfDayType === "AM") {
@@ -43,44 +45,67 @@ export class FreeFormEventsSource {
         const end = shiftToUTC(endDate);
     
         const event: ICalendarEvent = {
-           
-            category: "Training", // valeur fixe, toujours "Training"
-            
+            category: "Training", // valeur fixe
             description: description,
             endDate: end.toISOString(),
             startDate: start.toISOString(),
             title: title,
             halfDay: halfDayType,
-            member: { id: memberId, displayName: "" }, 
+            member,
+
             icons: []
         };
     
-      
         if (typeof event.category !== "string") {
             event.category = event.category.title;
         }
-      
     
-        // Ajout d'une icône liée au membre
+        //  Regrouper pour affichage avatar
+        const normalizedUTC = new Date(start);
+        normalizedUTC.setUTCHours(0, 0, 0, 0);
+        const dateKey = formatDate(normalizedUTC, "YYYY-MM-DD");
+
+        console.log(" Ajout dans groupedTrainingMap", dateKey, this.groupedTrainingMap[dateKey]);
+
+    
+        const icon: IEventIcon = {
+            linkedEvent: event,
+            src: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${member.id}?size=small`
+
+        };
+    
+        if (!this.groupedTrainingMap[dateKey]) {
+            this.groupedTrainingMap[dateKey] = {
+                ...event,
+                icons: [icon]
+            };
+        } else {
+            const exists = this.groupedTrainingMap[dateKey].icons!.some(i =>
+                i.linkedEvent.member?.id === member.id &&
+                i.linkedEvent.startDate === event.startDate
+            );
+            if (!exists) this.groupedTrainingMap[dateKey].icons!.push(icon);
+        }
+    
+        // Ajout d'une icône pour l'événement lui-même
         const safeLinkedEvent: ICalendarEvent = {
-            id: event.id, // ou undefined si pas encore généré
+            id: event.id,
             title: event.title,
             startDate: event.startDate,
             endDate: event.endDate,
             halfDay: event.halfDay,
-            category: event.category ?? "Training", //  Ajout de category obligatoire
+            category: event.category ?? "Training",
             member: event.member,
-            description: "", // ou event.description si utile
-            icons: [] 
+            description: "",
+            icons: []
         };
-        
+    
         event.icons = [
             {
-                src: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`,
+                src: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${member.id}?size=small`,
                 linkedEvent: safeLinkedEvent
             }
         ];
-        
     
         return this.dataManager!.createDocument(
             this.selectedTeamId! + "." + formatDate(startDate, "MM-YYYY"),
@@ -93,7 +118,8 @@ export class FreeFormEventsSource {
         });
     };
     
-
+    
+    private groupedTrainingMap: { [dateKey: string]: ICalendarEvent } = {};
     public deleteEvent = (eventId: string, startDate: Date) => {
         delete this.eventMap[eventId];
         return this.dataManager!.deleteDocument(this.selectedTeamId! + "." + formatDate(startDate, "MM-YYYY"), eventId);
@@ -102,6 +128,11 @@ export class FreeFormEventsSource {
     public getCategories = (): Set<string> => {
         return this.categories;
     };
+    public getGroupedEventForDate(date: Date): ICalendarEvent | undefined {
+        const key = formatDate(date, "YYYY-MM-DD");
+        return this.groupedTrainingMap[key];
+    }
+    
 
     public getEvents = (
         arg: {
@@ -186,7 +217,7 @@ export class FreeFormEventsSource {
             Object.keys(catagoryMap).forEach(key => {
                 const catagory = catagoryMap[key];
                 if (catagory.eventCount > 1) {
-                    catagory.subTitle = catagory.eventCount + " events";
+                    catagory.subTitle = catagory.eventCount + " trainings";
                 }
                 summaryList.push(catagory);
             });
@@ -199,6 +230,61 @@ export class FreeFormEventsSource {
     public getSummaryData = (): ObservableArray<IEventCategory> => {
         return this.summaryData;
     };
+    private trainingSummaryData: ObservableArray<IEventCategory> = new ObservableArray<IEventCategory>([]);
+
+    public getTrainingCapacitySummaryData = (): ObservableArray<IEventCategory> => {
+        const map = new Map<string, { eventCount: number; subTitle: string; title: string; imageUrl: string }>();
+    
+        for (const key in this.eventMap) {
+            if (!Object.prototype.hasOwnProperty.call(this.eventMap, key)) continue;
+    
+            const event = this.eventMap[key];
+            if (!event || event.category !== "Training" || !event.member) continue;
+    
+            const start = shiftToLocal(new Date(event.startDate));
+            const end = shiftToLocal(new Date(event.endDate));
+            const dates = getDatesInRange(start, end);
+    
+            const { increment } = this.isRealHalfDay(start, end);
+            const member = event.member;
+            const memberId = member.id;
+    
+            if (!map.has(memberId)) {
+                map.set(memberId, {
+                    eventCount: 0,
+                    subTitle: "",
+                    title: member.displayName,
+                    imageUrl: `${this.hostUrl}/_apis/GraphProfile/MemberAvatars/${memberId}?size=small`
+                });
+            }
+    
+            const existing = map.get(memberId)!;
+            existing.eventCount += increment;
+        }
+    
+        const result = Array.from(map.values()).map(cat => {
+            const rounded = Number(cat.eventCount.toFixed(1));
+            return {
+                ...cat,
+                subTitle: `${rounded} day${rounded !== 1 ? "s" : ""} training`
+            } as IEventCategory;
+        });
+    
+        const summaryArray = new ObservableArray<IEventCategory>();
+        summaryArray.push(...result);
+        return summaryArray;
+    };
+    
+    
+private isRealHalfDay(start: Date, end: Date): { halfDay?: "AM" | "PM"; increment: number } {
+    const startH = start.getHours();
+    const endH = end.getHours();
+
+    if (startH === 9 && endH === 12) return { halfDay: "AM", increment: 0.5 };
+    if (startH === 14 && endH === 18) return { halfDay: "PM", increment: 0.5 };
+    return { increment: 1 };
+}
+
 
     public initialize(teamId: string, manager: IExtensionDataManager) {
         this.selectedTeamId = teamId;

@@ -8,6 +8,8 @@ import { IDaysOffGroupedEvent } from './IDaysOffGroupedEvent';
 import { ICalendarEvent, IEventIcon, IEventCategory, ICalendarMember } from "./Contracts";
 import { formatDate, getDatesInRange, shiftToUTC, shiftToLocal } from "./TimeLib";
 import { TeamMemberCapacityIdentityRef, TeamSettingsIteration, TeamSettingsDaysOff, TeamSettingsDaysOffPatch, CapacityPatch, TeamMemberCapacity, WorkRestClient } from "azure-devops-extension-api/Work";
+import { FreeFormEventsSource } from "./FreeFormEventSource";
+import { CapacityAutoUpdaterService } from "./CapacityAutoUpdaterService";
 
 
 export const DaysOffId = "daysOff";
@@ -21,6 +23,8 @@ export class VSOCapacityEventSource {
     //private groupedEventMap: { [dateString: string]: ICalendarEvent } = {};
     private customEventsMap: { [eventKey: string]: { halfDay?: "AM" | "PM" } } = {};
     private hostUrl: string = "";
+    private freeForm?: FreeFormEventsSource;
+
     private iterations: TeamSettingsIteration[] = [];
     private iterationSummaryData: ObservableArray<IEventCategory> = new ObservableArray<IEventCategory>([]);
     private iterationUrl: ObservableValue<string> = new ObservableValue("");
@@ -277,7 +281,15 @@ export class VSOCapacityEventSource {
         Object.keys(this.customEventsMap).forEach(k => delete this.customEventsMap[k]);
         Object.keys(this.groupedEventMap).forEach(k => delete this.groupedEventMap[k]);
     
-        this.fetchIterations().then(iterations => {
+        this.fetchIterations().then(async iterations => {
+            if (this.freeForm) {
+                const iteration = iterations.find(it => it.id); // ou le premier actif
+                if (iteration?.attributes.startDate && iteration.attributes.finishDate) {
+                    const updater = new CapacityAutoUpdaterService(this.workClient, this.teamContext, this.freeForm);
+                    await updater.syncAllCapacity(iteration.id, iteration.attributes.startDate, iteration.attributes.finishDate);
+                }
+            }
+            
             if (!iterations) {
                 iterations = [];
             }
@@ -582,7 +594,7 @@ export class VSOCapacityEventSource {
         return this.hostUrl + "_api/_common/IdentityImage?id=" + id;
     }
 
-    private fetchCapacities = (iterationId: string): Promise<TeamMemberCapacityIdentityRef[]> => {
+    public fetchCapacities = (iterationId: string): Promise<TeamMemberCapacityIdentityRef[]> => {
         // fetch capacities only if not in cache
         if (this.capacityMap[iterationId]) {
             const capacities = [];
@@ -594,14 +606,15 @@ export class VSOCapacityEventSource {
         return this.workClient.getCapacitiesWithIdentityRef(this.teamContext, iterationId);
     };
 
-    private fetchIterations = (): Promise<TeamSettingsIteration[]> => {
+    public async fetchIterations(): Promise<TeamSettingsIteration[]> {
         // fetch iterations only if not in cache
         if (this.iterations.length > 0) {
             return Promise.resolve(this.iterations);
         }
         return this.workClient.getTeamIterations(this.teamContext);
-    };
-
+    }
+    public getTeamContext(): TeamContext { return this.teamContext; }
+    public getWorkClient(): WorkRestClient { return this.workClient; }
     private fetchTeamDaysOff = (iterationId: string): Promise<TeamSettingsDaysOff> => {
         // fetch team day off only if not in cache
         if (this.teamDayOffMap[iterationId]) {
@@ -935,6 +948,9 @@ export class VSOCapacityEventSource {
         }
     
         localStorage.setItem("forceCalendarRefresh", "true");
+    }
+    public setFreeFormSource(source: FreeFormEventsSource) {
+        this.freeForm = source;
     }
     
     

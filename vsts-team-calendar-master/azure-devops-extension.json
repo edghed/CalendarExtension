@@ -2,21 +2,24 @@
   "manifestVersion": 1,
   "id": "team-calendar",
   "publisher": "EDEMGHARIANI",
-  "version": "2.0.140",
+  "version": "2.0.156",
   "name": "Team Calendar",
   "description": "Track events important to your team, view and manage days off, quickly see when sprints start and end, and more.",
   "public": false,
-  "categories":  ["Azure Boards"],
+  "categories": ["Azure Boards"],
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"
     }
   ],
-  "scopes": ["vso.work_write"],
+  "scopes": [
+    "vso.work_write",
+    "vso.work",
+    "vso.project"
+  ],
   "icons": {
     "default": "static/v2-images/calendar-logo.png"
   },
-
   "content": {
     "details": {
       "path": "overview.md"
@@ -81,9 +84,9 @@
     {
       "id": "edem-calendar",
       "type": "ms.vss-web.hub",
-      "description": "Calendar hub in the Work hub group.",
+      "description": "Calendar hub in the **Project** context.",
       "targets": [
-        "ms.vss-work-web.work-hub-group"
+        "ms.vss-project-web.project-hub-group"
       ],
       "properties": {
         "name": "Calendar",
@@ -117,6 +120,16 @@
           "required": true
         }
       }
+    }
+  ],
+  "permissions": [
+    {
+      "resource": "vso.work",
+      "access": "read"
+    },
+    {
+      "resource": "vso.project",
+      "access": "read"
     }
   ]
 }
