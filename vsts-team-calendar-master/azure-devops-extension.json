@@ -2,11 +2,13 @@
   "manifestVersion": 1,
   "id": "team-calendar",
   "publisher": "EDEMGHARIANI",
-  "version": "2.0.156",
+  "version": "2.0.212",
   "name": "Team Calendar",
   "description": "Track events important to your team, view and manage days off, quickly see when sprints start and end, and more.",
   "public": false,
-  "categories": ["Azure Boards"],
+  "categories": [
+    "Azure Boards"
+  ],
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"
@@ -74,7 +76,7 @@
       "type": "ms.vss-web.global-message-banner",
       "description": "Banner points out that the Calendar has moved to the Boards hub.",
       "targets": [
-        "ms.vss-web.home-hub-group"
+        "ms.vss-project-web.project-hub-group"
       ],
       "properties": {
         "message": "The Calendar has moved! You may now find it under the Boards menu.",

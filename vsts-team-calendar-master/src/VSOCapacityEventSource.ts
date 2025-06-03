@@ -30,7 +30,8 @@ export class VSOCapacityEventSource {
     private iterationUrl: ObservableValue<string> = new ObservableValue("");
     private teamContext: TeamContext = { projectId: "", teamId: "", project: "", team: "" };
     private teamDayOffMap: { [iterationId: string]: TeamSettingsDaysOff } = {};
-    private workClient: WorkRestClient = getClient(WorkRestClient, {});
+    private workClient!: WorkRestClient;
+
     private dataManager?: IExtensionDataManager;
 
    // private groupedEventMap: { [date: string]: IDaysOffGroupedEvent } = {};  // Regroupement des événements
@@ -282,13 +283,13 @@ export class VSOCapacityEventSource {
         Object.keys(this.groupedEventMap).forEach(k => delete this.groupedEventMap[k]);
     
         this.fetchIterations().then(async iterations => {
-            if (this.freeForm) {
+           /* if (this.freeForm) {
                 const iteration = iterations.find(it => it.id); // ou le premier actif
                 if (iteration?.attributes.startDate && iteration.attributes.finishDate) {
                     const updater = new CapacityAutoUpdaterService(this.workClient, this.teamContext, this.freeForm);
                     await updater.syncAllCapacity(iteration.id, iteration.attributes.startDate, iteration.attributes.finishDate);
                 }
-            }
+            }*/
             
             if (!iterations) {
                 iterations = [];
@@ -607,12 +608,27 @@ export class VSOCapacityEventSource {
     };
 
     public async fetchIterations(): Promise<TeamSettingsIteration[]> {
-        // fetch iterations only if not in cache
-        if (this.iterations.length > 0) {
-            return Promise.resolve(this.iterations);
+        this.assertClientReady();
+
+        try {
+            if (this.iterations.length > 0) {
+                return this.iterations;
+            }
+    
+            const iterations = await this.workClient.getTeamIterations(this.teamContext);
+            return iterations;
+        } catch (error) {
+            const err = error as any;
+            if (err?.status === 401) {
+                console.error(" 401 Unauthorized");
+            } else {
+                console.error(" Erreur inconnue:", err);
+            }
         }
-        return this.workClient.getTeamIterations(this.teamContext);
+        console.log("[fetchIterations] teamContext = ", this.teamContext);
+        return []; 
     }
+    
     public getTeamContext(): TeamContext { return this.teamContext; }
     public getWorkClient(): WorkRestClient { return this.workClient; }
     private fetchTeamDaysOff = (iterationId: string): Promise<TeamSettingsDaysOff> => {
@@ -828,7 +844,7 @@ export class VSOCapacityEventSource {
     // Removed duplicate processTeamDaysOff method
     
 
-    private updateUrls = () => {
+   /* private updateUrls = () => {
         this.iterationUrl.value = this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_admin/_iterations";
 
         this.workClient.getTeamIterations(this.teamContext, "current").then(
@@ -845,7 +861,28 @@ export class VSOCapacityEventSource {
                 this.capacityUrl.value = this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_admin/_iterations";
             }
         );
+    };*/
+    public updateUrls = () => {
+        if (!this.workClient || !this.teamContext?.team) return; // ← sécurité
+    
+        this.iterationUrl.value = this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_admin/_iterations";
+    
+        this.workClient.getTeamIterations(this.teamContext, "current").then(
+            iterations => {
+                if (iterations.length > 0) {
+                    const iterationPath = iterations[0].path.substr(iterations[0].path.indexOf("\\") + 1);
+                    this.capacityUrl.value =
+                        this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_backlogs/capacity/" + iterationPath;
+                } else {
+                    this.capacityUrl.value = this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_admin/_iterations";
+                }
+            },
+            error => {
+                this.capacityUrl.value = this.hostUrl + this.teamContext.project + "/" + this.teamContext.team + "/_admin/_iterations";
+            }
+        );
     };
+    
     private isRealHalfDay = (start: Date, end: Date): { halfDay?: "AM" | "PM"; increment: number } => {
         const startH = start.getHours();
         const endH = end.getHours();
@@ -952,6 +989,18 @@ export class VSOCapacityEventSource {
     public setFreeFormSource(source: FreeFormEventsSource) {
         this.freeForm = source;
     }
+    public setWorkClient(client: WorkRestClient): void {
+        this.workClient = client;
+    }
+    private assertClientReady(): void {
+        if (!this.workClient) {
+            throw new Error("WorkClient is not initialized. Use setWorkClient(...) before calling any API.");
+        }
+        if (!this.teamContext?.project || !this.teamContext?.team) {
+            throw new Error("TeamContext is missing required fields (project, team).");
+        }
+    }
+    
     
     
     

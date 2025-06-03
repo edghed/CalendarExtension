@@ -31,6 +31,17 @@ export class CapacityAutoUpdaterService {
             const shouldUpdate = merged.length !== originalDaysOff.length;
 
             if (shouldUpdate) {
+                console.log(`[POSTMAN TEST] PATCH https://dev.azure.com/${this.teamContext.project}/_apis/work/teamsettings/capacity/${userId}?iterationId=${iterationId}&api-version=7.1-preview.1`);
+
+console.log("Request Body:");
+console.log(JSON.stringify({
+    activities: capacity.activities,
+    daysOff: merged.map(d => ({
+        start: shiftToUTC(d.start),
+        end: shiftToUTC(d.end)
+    }))
+}, null, 2));
+
                 await this.workClient.updateCapacityWithIdentityRef({
                     activities: capacity.activities,
                     daysOff: merged.map(d => ({
