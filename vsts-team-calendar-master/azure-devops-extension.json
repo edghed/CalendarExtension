@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "team-calendar",
   "publisher": "EDEMGHARIANI",
-  "version": "2.0.212",
+  "version": "2.0.307",
   "name": "Team Calendar",
   "description": "Track events important to your team, view and manage days off, quickly see when sprints start and end, and more.",
   "public": false,
@@ -15,9 +15,7 @@
     }
   ],
   "scopes": [
-    "vso.work_write",
-    "vso.work",
-    "vso.project"
+    "vso.work_write"
   ],
   "icons": {
     "default": "static/v2-images/calendar-logo.png"
@@ -76,7 +74,7 @@
       "type": "ms.vss-web.global-message-banner",
       "description": "Banner points out that the Calendar has moved to the Boards hub.",
       "targets": [
-        "ms.vss-project-web.project-hub-group"
+        "ms.vss-web.home-hub-group"
       ],
       "properties": {
         "message": "The Calendar has moved! You may now find it under the Boards menu.",
@@ -86,9 +84,9 @@
     {
       "id": "edem-calendar",
       "type": "ms.vss-web.hub",
-      "description": "Calendar hub in the **Project** context.",
+      "description": "Calendar hub in the Work hub group.",
       "targets": [
-        "ms.vss-project-web.project-hub-group"
+        "ms.vss-work-web.work-hub-group"
       ],
       "properties": {
         "name": "Calendar",
@@ -122,16 +120,6 @@
           "required": true
         }
       }
-    }
-  ],
-  "permissions": [
-    {
-      "resource": "vso.work",
-      "access": "read"
-    },
-    {
-      "resource": "vso.project",
-      "access": "read"
     }
   ]
 }

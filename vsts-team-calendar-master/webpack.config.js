@@ -12,10 +12,13 @@ module.exports = {
     Calendar: "./" + path.relative(process.cwd(), path.join(__dirname, "src", "Calendar.tsx"))
   },
   output: {
-    filename: "[name].js",
-    path:  path.resolve(__dirname, 'dist')
-
-  },
+    filename: "Calendar.js",
+    path: path.resolve(__dirname, "dist"),
+    publicPath: "/dist/",
+    clean: true
+  }
+  
+  ,
   devtool: "inline-source-map",
   resolve: {
     extensions: [".ts", ".tsx", ".js"],

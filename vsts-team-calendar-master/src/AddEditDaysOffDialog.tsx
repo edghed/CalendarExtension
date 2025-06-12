@@ -87,7 +87,7 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
 
     constructor(props: IAddEditDaysOffDialogProps) {
         super(props);
-        
+
         this.okButtonEnabled = new ObservableValue<boolean>(true);
         this.message = new ObservableValue<string>("");
         this.memberSelection = new DropdownSelection();
@@ -278,17 +278,6 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
     private onOKClick = (): void => {
         const isHalfDay = !!this.halfDayType.value;
     
-        //  Inject AM/PM hours if half-day is selected
-        if (isHalfDay && this.halfDayType.value) {
-            if (this.halfDayType.value === "AM") {
-                this.startDate.setHours(9, 0, 0, 0);
-                this.endDate.setHours(12, 0, 0, 0);
-            } else if (this.halfDayType.value === "PM") {
-                this.startDate.setHours(14, 0, 0, 0);
-                this.endDate.setHours(18, 0, 0, 0);
-            }
-        }
-    
         // 
         //  Validate that half-day spans a single day
         if (isHalfDay && this.startDate.toDateString() !== this.endDate.toDateString()) {
@@ -337,8 +326,6 @@ export class AddEditDaysOffDialog extends React.Component<IAddEditDaysOffDialogP
     
         this.props.onDismiss();
     };
-    
-    
     
     private onSelectTeamMember = (event: React.SyntheticEvent<HTMLElement>, item: IListBoxItem<{}>) => {
         this.selectedMemberName = item.text!;

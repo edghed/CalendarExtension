@@ -106,6 +106,10 @@ export class SummaryComponent extends React.Component<ISummaryComponentProps> {
                         );
                     }}
                 </Observer>
+                <button className="bolt-button bolt-button-primary margin-top-16" onClick={this.handleUpdateCapacities}>
+    Ajuster les capacités
+</button>
+
             </div>
         );
     }
@@ -133,4 +137,41 @@ export class SummaryComponent extends React.Component<ISummaryComponentProps> {
             </ListItem>
         );
     };
+    private handleUpdateCapacities = async () => {
+        const source = this.props.capacityEventSource;
+    
+        try {
+            //  Étape 1 : Récupération des sprints
+            console.log(" Fetching iterations...");
+            const iterations = await source.fetchIterations();
+    
+            //  Étape 2 : Identification de l'itération actuelle
+            const now = new Date();
+            const current = iterations.find(it => {
+                const start = new Date(it.attributes?.startDate ?? "");
+                const end = new Date(it.attributes?.finishDate ?? "");
+                console.log(`[DEBUG] Sprint check: ${it.name} | ${start.toISOString()} → ${end.toISOString()} | now=${now.toISOString()}`);
+                return start <= now && now <= end;
+            });
+    
+            if (!current) {
+                alert(" Impossible de trouver l'itération actuelle.");
+                return;
+            }
+    
+            console.log(` Itération détectée : ${current.name} (ID=${current.id})`);
+    
+            //  Étape 3 : Préparation des données capacité
+            await source.prepareCapacityAdjustments(current.id);
+
+            //  Étape 4 : Mise à jour des capacités
+            await source.updateCapacitiesBasedOnTraining(current.id);
+    
+            alert(" Capacités mises à jour avec succès !");
+        } catch (err) {
+            console.error(" Erreur mise à jour des capacités :", err);
+            alert(" Une erreur est survenue lors de la mise à jour des capacités.\n" + (err as any)?.message);
+        }
+    };
+    
 }

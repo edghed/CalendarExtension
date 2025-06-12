@@ -41,7 +41,7 @@ import { MonthAndYear, monthAndYearToString,shiftToUTC, shiftToLocal,formatDate 
 import { DaysOffId, VSOCapacityEventSource, IterationId } from "./VSOCapacityEventSource";
 import { RemoteId, RemoteEventSource } from "./RemoteEventSource";
 import { AddEditRemoteDialog } from "./AddEditRemoteDialog";
-const EXTENSION_VERSION = "2.0.212";
+const EXTENSION_VERSION = "2.0.307";
 
 
 enum Dialogs {
@@ -287,10 +287,12 @@ class ExtensionContent extends React.Component {
                         eventSource={this.freeFormEventSource}
                         onDismiss={this.onDialogDismiss}
                         start={this.selectedStartDate}
-                        dialogTitle="Training" 
-                        members={this.members}
-
-                                           />
+                        dialogTitle="Training"
+                        teamMembers={this.members.map(m => ({
+                            id: m.identity.id,
+                            displayName: m.identity.displayName
+                          }))}
+                    />
                 );
                 case Dialogs.NewRemoteDialog:
     return (
@@ -525,7 +527,6 @@ if (shouldRefresh) {
         const locationService = await SDK.getService<ILocationService>(CommonServiceIds.LocationService);
 
         this.dataManager = await dataSvc.getExtensionDataManager(SDK.getExtensionContext().id, await SDK.getAccessToken());
-        
         this.vsoCapacityEventSource.setDataManager(this.dataManager);
 
         this.navigationService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
@@ -581,6 +582,8 @@ if (shouldRefresh) {
               
                 
             }
+            //initialize training 
+            this.vsoCapacityEventSource.freeForm = this.freeFormEventSource;
             this.freeFormEventSource.initialize(selectedTeamId, this.dataManager);
             this.remoteEventSource.initialize(
                 project.id,
@@ -593,6 +596,8 @@ if (shouldRefresh) {
             
 
             this.vsoCapacityEventSource.initialize(project.id, this.projectName, selectedTeamId, this.selectedTeamName, this.hostUrl);
+            this.vsoCapacityEventSource.freeForm = this.freeFormEventSource;
+
             //  Reset automatique après déploiement si version a changé
 const resetKey = `last-init-version-${project.id}`;
 const lastKnownVersion = await this.dataManager!.getValue<string>(resetKey, { scopeType: "User" }).catch(() => undefined);
@@ -622,6 +627,8 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
             this.dataManager.setValue<string>("selected-team-" + project.id, selectedTeamId, { scopeType: "User" });
             this.teams.value = allTeams;
             this.members = await client.getTeamMembersWithExtendedProperties(project.id, selectedTeamId);
+            this.freeFormEventSource.setMembers(this.members);
+
         }
     }
 
@@ -662,6 +669,11 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
 
     private onEventClick = (arg: { el: HTMLElement; event: EventApi; jsEvent: MouseEvent; view: View }) => {
         const { event } = arg;
+        if (event.extendedProps?.category === "Training") {
+            this.eventApi = event;
+            this.openDialog.value = Dialogs.NewTrainingDialog;
+            return;
+        }
     
         if (event.id.startsWith(FreeFormId)) {
             this.eventApi = event;
@@ -737,7 +749,7 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
                 inclusiveEndDate,
              
                 arg.event.extendedProps.description,
-                arg.event.extendedProps.halfDay
+                arg.event.extendedProps.halfDay,
                 
             );
         }
@@ -843,7 +855,6 @@ if (lastKnownVersion !== EXTENSION_VERSION) {
 
 function showRootComponent(component: React.ReactElement<any>) {
     ReactDOM.render(component, document.getElementById("team-calendar"));
-    SDK.notifyLoadSucceeded();
 }
 
 showRootComponent(<ExtensionContent />);

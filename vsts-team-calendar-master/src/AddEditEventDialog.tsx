@@ -12,8 +12,6 @@ import { ObservableValue } from "azure-devops-ui/Core/Observable";
 import { Observer } from "azure-devops-ui/Observer";
 import { PanelHeader, PanelFooter, PanelContent } from "azure-devops-ui/Panel";
 import { TextField } from "azure-devops-ui/TextField";
-import { TeamMember } from "azure-devops-extension-api/WebApi/WebApi";
-import { getUser } from "azure-devops-extension-sdk";
 
 import { Calendar, EventApi } from "@fullcalendar/core";
 
@@ -29,10 +27,9 @@ interface IAddEditEventDialogProps {
     eventSource: FreeFormEventsSource;
     onDismiss: () => void;
     start: Date;
-    members: TeamMember[];
+    teamMembers: { id: string; displayName: string }[];
 
 }
-
 
 export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps> {
     startDate: Date;
@@ -48,35 +45,26 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
     catagorySelection: IListSelection = new ListSelection();
     selectedMemberId: string;
     selectedMemberName: string;
-    teamMembers: IListBoxItem[] = [];
-
+    teamMembers: IListBoxItem[] = [
+        { id: "default-id", text: "Default User" }
+    ];
     memberSelection: IListSelection = new ListSelection();
 
     constructor(props: IAddEditEventDialogProps) {
         super(props);
     
-        //  Prépare la liste des membres correctement
-        this.teamMembers = props.members.map(m => ({
-            id: m.identity.id,
-            text: m.identity.displayName
+        // Injecter dynamiquement les vrais membres de l’équipe
+        this.teamMembers = props.teamMembers.map(member => ({
+            id: member.id,
+            text: member.displayName
         }));
     
-        const currentUser = getUser()?.id;
-        const defaultIndex = this.teamMembers.findIndex(m => m.id === currentUser) ?? 0;
-        console.log("👤 Membre par défaut:", {
-            currentUser,
-            defaultIndex,
-            selectedMember: this.teamMembers[defaultIndex]
-        });
-        
-
- 
-        //  2. Init les valeurs sélectionnées
-        this.selectedMemberId = this.teamMembers[defaultIndex]?.id ?? "";
-        this.selectedMemberName = this.teamMembers[defaultIndex]?.text ?? "";
-        this.memberSelection.select(defaultIndex);
+        // Valeurs par défaut si la liste est vide
+        this.selectedMemberId = this.teamMembers[0]?.id ?? "default-id";
+        this.selectedMemberName = this.teamMembers[0]?.text ?? "Default User";
+        this.memberSelection.select(0);
     
-        //  3. Dates
+        // Initialiser les dates
         if (this.props.eventApi) {
             this.startDate = this.props.eventApi.start!;
             if (this.props.eventApi.end) {
@@ -85,11 +73,13 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
             } else {
                 this.endDate = new Date(this.props.eventApi.start!);
             }
+    
             this.title.value = this.props.eventApi.title;
             this.description.value = this.props.eventApi.extendedProps.description || "";
             this.category = this.props.eventApi.extendedProps.category || "";
             this.isHalfDay.value = this.props.eventApi.extendedProps.isHalfDay || false;
             this.halfDayType.value = this.props.eventApi.extendedProps.halfDay ?? undefined;
+    
             this.catagorySelection.select(0);
         } else {
             this.startDate = props.start;
@@ -97,6 +87,7 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
         }
     }
     
+
     public render(): JSX.Element {
         return (
             <>
@@ -279,18 +270,15 @@ export class AddEditEventDialog extends React.Component<IAddEditEventDialogProps
                   this.description.value,
                   this.halfDayType.value
               )
-            : this.props.eventSource.addEvent(
-                this.title.value,
-                this.startDate,
-                this.endDate,
-                this.description.value,
-                this.halfDayType.value,
-                {
-                    id: this.selectedMemberId,
-                    displayName: this.selectedMemberName
-                }
-            );
-            
+            : eventSource.addEvent(
+                  this.title.value,
+                  this.startDate,
+                  this.endDate,
+              
+                  this.description.value,
+                  this.halfDayType.value,
+                  this.selectedMemberId
+              );
         saveEvent.then(() => {
             calendarApi.refetchEvents();
         });

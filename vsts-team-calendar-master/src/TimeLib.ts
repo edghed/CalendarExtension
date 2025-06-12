@@ -31,7 +31,7 @@ export function formatDate(date: Date, format?: string): string {
  * @param endDate End Date
  * @return Date[] containing each date in the range
  */
-export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
+/*export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
     const dates = [];
     let current: Date = startDate;
     while (current.getTime() <= endDate.getTime()) {
@@ -39,7 +39,30 @@ export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
         current.setDate(current.getDate() + 1);
     }
     return dates;
+}*/
+export function getDatesInRange(startDate: Date, endDate: Date): Date[] {
+    const dates: Date[] = [];
+
+    const current = new Date(Date.UTC(
+        startDate.getUTCFullYear(),
+        startDate.getUTCMonth(),
+        startDate.getUTCDate()
+    ));
+
+    const end = new Date(Date.UTC(
+        endDate.getUTCFullYear(),
+        endDate.getUTCMonth(),
+        endDate.getUTCDate()
+    ));
+
+    while (current <= end) {
+        dates.push(new Date(current)); // 🧠 Toujours à 00:00:00Z
+        current.setUTCDate(current.getUTCDate() + 1); // 🔁 UTC-safe
+    }
+
+    return dates;
 }
+
 
 /**
  * Turns a start date and end date into a list of MonthYear within the range and previous month, inclusive

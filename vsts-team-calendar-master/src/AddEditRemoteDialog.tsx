@@ -74,11 +74,10 @@ export class AddEditRemoteDialog extends React.Component<IAddEditRemoteDialogPro
         } else {
             this.startDate = props.start;
             this.endDate = props.end;
-            this.teamMembers = props.members.map(m => ({
-                id: m.identity.id,
-                text: m.identity.displayName
-            }));
-            
+            this.teamMembers = props.members.map((m, i) => {
+                if (m.identity.displayName === userName) selectedIndex = i;
+                return { id: m.identity.id, text: m.identity.displayName };
+            });
         }
 
         this.memberSelection.select(selectedIndex);
